@@ -330,7 +330,7 @@ window.vpdfProcess = async function(file){
     sv('ve-bw',p.bw_lbs);
     if(p.notes_raw)document.getElementById('ve-note').value=p.notes_raw;
 
-    // Store extended v2.0 fields in a temp object for saveValdEntry to pick up
+    // Build the full v2.0 extended fields object
     window._pendingValdExtended = {
       dj_rsi: p.dj_rsi, hop_rsi: p.hop_rsi,
       sl_hop_l: p.sl_hop_l, sl_hop_r: p.sl_hop_r,
@@ -345,6 +345,13 @@ window.vpdfProcess = async function(file){
       cmj_trend: p.cmj_trend_pct, hop_trend: p.hop_trend_pct,
       sprint_trend: p.sprint_trend_pct, cod_trend: p.cod_trend_pct,
     };
+
+    // If athlete already exists, save extended fields NOW directly
+    if(existing){
+      if(!existing.vald)existing.vald={};
+      Object.entries(window._pendingValdExtended).forEach(([k,v])=>{if(v!=null&&v!=='')existing.vald[k]=v;});
+      save();
+    }
 
     // Build summary card
     const fields=[
@@ -381,29 +388,39 @@ window.vpdfProcess = async function(file){
 // Override saveValdEntry to persist extended fields
 const _origSaveValdEntry = window.saveValdEntry;
 window.saveValdEntry = function(){
+  // Capture dropdown value BEFORE calling original (which resets the form)
+  const sel=document.getElementById('ve-sel');
+  const selVal=sel&&sel.value;
+  const firstName=(document.getElementById('ve-first')&&document.getElementById('ve-first').value||'').trim();
+  const lastName=(document.getElementById('ve-last')&&document.getElementById('ve-last').value||'').trim();
+  const extended=window._pendingValdExtended?{...window._pendingValdExtended}:null;
+  window._pendingValdExtended=null;
+
+  // Run original save
   _origSaveValdEntry.apply(this, arguments);
-  // After save, merge extended fields into the athlete's vald object
-  if(window._pendingValdExtended){
-    const sel=document.getElementById('ve-sel');
-    if(sel&&sel.value&&sel.value!=='_new'){
-      const ath=S.athletes.find(a=>a.id===sel.value);
+
+  // Merge extended fields after original save settles
+  if(extended){
+    setTimeout(()=>{
+      let ath=null;
+      if(selVal&&selVal!=='_new'){
+        ath=S.athletes.find(a=>a.id===selVal);
+      }
+      if(!ath&&firstName&&lastName){
+        ath=S.athletes.find(a=>
+          a.first.toLowerCase()===firstName.toLowerCase()&&
+          a.last.toLowerCase()===lastName.toLowerCase()
+        );
+      }
       if(ath){
         if(!ath.vald)ath.vald={};
-        Object.entries(window._pendingValdExtended).forEach(([k,v])=>{if(v!=null&&v!=='')ath.vald[k]=v;});
+        Object.entries(extended).forEach(([k,v])=>{if(v!=null&&v!=='')ath.vald[k]=v;});
         save();
+        toast('VALD Pro fields saved \u2713');
+        // Refresh athlete detail if it's open
+        if(S.selAth===ath.id)showAthDetail(ath.id);
       }
-    } else {
-      // New athlete — find by name match
-      const first=(document.getElementById('ve-first')&&document.getElementById('ve-first').value||'').trim();
-      const last=(document.getElementById('ve-last')&&document.getElementById('ve-last').value||'').trim();
-      const ath=S.athletes.find(a=>a.first===first&&a.last===last);
-      if(ath){
-        if(!ath.vald)ath.vald={};
-        Object.entries(window._pendingValdExtended).forEach(([k,v])=>{if(v!=null&&v!=='')ath.vald[k]=v;});
-        save();
-      }
-    }
-    window._pendingValdExtended=null;
+    },300);
   }
 };
 
@@ -421,6 +438,10 @@ window.showAthDetail = function(id){
     const v=ath.vald;
     const detail=document.getElementById('ath-detail');
     if(!detail)return;
+
+    // Remove any existing pro card first (prevent duplicates on re-render)
+    const existing=detail.querySelector('.vald-pro-card');
+    if(existing)existing.remove();
 
     // Build pro metrics grid if we have v2.0 data
     const hasProData=v.dj_rsi||v.hop_rsi||v.sl_hop_l||v.sl_jump_l||v.cmj_wkg||v.cod;
@@ -442,36 +463,48 @@ window.showAthDetail = function(id){
     };
 
     const rows=[
-      v.dj_rsi&&{l:'Drop Jump RSI',v:v.dj_rsi,pct:v.dj_pct,trend:v.dj_trend,unit:'m/s',invertGood:false},
-      v.hop_rsi&&{l:'Hop Test RSI',v:v.hop_rsi,pct:v.hop_pct,trend:v.hop_trend,unit:'',invertGood:false},
+      v.dj_rsi&&{l:'DJ RSI',v:v.dj_rsi,pct:v.dj_pct,trend:v.dj_trend,unit:'m/s',invertGood:false},
+      v.hop_rsi&&{l:'Hop RSI',v:v.hop_rsi,pct:v.hop_pct,trend:v.hop_trend,unit:'',invertGood:false},
       v.cmj_wkg&&{l:'CMJ Power',v:v.cmj_wkg,pct:v.cmj_pct,trend:v.cmj_trend,unit:'W/kg',invertGood:false},
-      (v.sl_jump_l||v.sl_jump_r)&&{l:'SL Jump L / R',v:(v.sl_jump_l||'-')+' / '+(v.sl_jump_r||'-'),unit:'W/kg',pct:null},
-      (v.sl_hop_l||v.sl_hop_r)&&{l:'SL Hop RSI L / R',v:(v.sl_hop_l||'-')+' / '+(v.sl_hop_r||'-'),unit:''},
+      (v.sl_jump_l||v.sl_jump_r)&&{l:'SL Jump L\u2009/\u2009R',v:(v.sl_jump_l||'\u2013')+'\u2009/\u2009'+(v.sl_jump_r||'\u2013'),unit:'W/kg',pct:null,trend:null},
+      (v.sl_hop_l||v.sl_hop_r)&&{l:'SL Hop L\u2009/\u2009R',v:(v.sl_hop_l||'\u2013')+'\u2009/\u2009'+(v.sl_hop_r||'\u2013'),unit:'',pct:null,trend:null},
       v.cod&&{l:'5-10-5 COD',v:v.cod,pct:null,trend:v.cod_trend,unit:'s',invertGood:true},
+      v.sl_drop_force_r&&{l:'Drop Force R',v:v.sl_drop_force_r,pct:null,trend:null,unit:'N'},
     ].filter(Boolean);
 
     if(!rows.length)return;
 
+    // DJ vs Hop RSI gap insight
+    let gapInsight='';
+    if(v.dj_rsi&&v.hop_rsi&&(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi))>0.5){
+      gapInsight='<div style="background:rgba(255,140,66,.08);border:1px solid rgba(255,140,66,.3);border-radius:var(--r);padding:7px 10px;margin-top:8px;font-size:9px;color:var(--orange);">'
+        +'\u26a0\ufe0f DJ RSI ('+v.dj_rsi+') vs Hop RSI ('+v.hop_rsi+') — '+(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi)).toFixed(2)+' gap. Natera: tendon stiffness deficit under drop load. Prioritize DJ-specific isometric loading.'
+        +'</div>';
+    }
+
     const proCard=document.createElement('div');
-    proCard.className='card';
-    proCard.innerHTML='<div class="card-title" style="justify-content:space-between;"><span>VALD Pro Metrics</span><span style="color:var(--accent);font-size:8px;">Brain v2.0</span></div>'
+    proCard.className='card vald-pro-card';
+    proCard.style.cssText='border-color:rgba(184,255,87,.2);';
+    proCard.innerHTML='<div class="card-title" style="justify-content:space-between;"><span>VALD Pro Metrics</span><span style="color:var(--accent);font-size:8px;letter-spacing:1px;">BRAIN v2.0</span></div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
       +rows.map(r=>'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:9px 11px;">'
         +'<div style="font-size:8px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">'+r.l+'</div>'
-        +'<div style="font-family:var(--disp);font-size:18px;color:var(--accent);">'+r.v+'<span style="font-size:9px;color:var(--text3);"> '+r.unit+'</span>'
+        +'<div style="font-family:var(--disp);font-size:18px;color:var(--accent);">'+r.v
+        +(r.unit?'<span style="font-size:9px;color:var(--text3);"> '+r.unit+'</span>':'')
         +pctBadge(r.pct)
-        +trendBadge(r.trend,r.invertGood)
+        +(r.trend!=null?trendBadge(r.trend,r.invertGood):'')
         +'</div></div>').join('')
-      +'</div>';
+      +'</div>'
+      +gapInsight;
 
-    // Insert after the first card (metrics card)
+    // Insert right after the athlete header card (first child)
     const firstCard=detail.querySelector('.card');
-    if(firstCard&&firstCard.nextSibling){
-      detail.insertBefore(proCard,firstCard.nextSibling);
-    }else if(firstCard){
-      detail.appendChild(proCard);
+    if(firstCard){
+      firstCard.insertAdjacentElement('afterend',proCard);
+    }else{
+      detail.insertBefore(proCard,detail.firstChild);
     }
-  }, 80);
+  },150);
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -553,4 +586,59 @@ window.runSentinelChecks=async function(){
   return checks;
 };
 
-console.log('[FitClub CT] Super Trainer Brain '+BRAIN_VERSION+' loaded \u2014 6 coaches + VALD Pro Schema');
+// ═══════════════════════════════════════════════════════════════
+// MIGRATION — Parse existing session notes to extract v2.0 fields
+// Runs once on load for athletes who already have VALD session notes
+// but don't yet have the extended vald fields saved
+// ═══════════════════════════════════════════════════════════════
+function migrateValdFromSessionNotes(){
+  let migrated=0;
+  S.athletes.forEach(ath=>{
+    if(!ath.vald)ath.vald={};
+    // Already has v2.0 data — skip
+    if(ath.vald.dj_rsi||ath.vald.hop_rsi)return;
+    // Look through sessions for VALD note text
+    const sessions=(S.sessions[ath.id]||[]);
+    sessions.forEach(sess=>{
+      const n=sess.notes||'';
+      if(!n.includes('Drop Jump')&&!n.includes('RSI')&&!n.includes('Hop Test'))return;
+      // Parse key values from the note text
+      const extract=(pattern)=>{const m=n.match(pattern);return m?parseFloat(m[1]):null;};
+      const dj=extract(/Drop Jump[^:]*RSI[^:]*?:\s*([\d.]+)/i)||extract(/Drop Jump.*?([\d.]+)\s*m\/s/i);
+      const hop=extract(/Hop Test[^.]*?([\d.]+)/i)||extract(/Mean RSI.*?([\d.]+)/i);
+      const slHopL=extract(/SL Hop.*?Left.*?([\d.]+)/i)||extract(/Left\s+([\d.]+)\s*\(/i);
+      const slHopR=extract(/SL Hop.*?Right.*?([\d.]+)/i)||extract(/Right\s+([\d.]+)\s*\(/i);
+      const slJumpL=extract(/Single Leg Jump.*?Left\s+([\d.]+)\s*W/i);
+      const slJumpR=extract(/Single Leg Jump.*?Right\s+([\d.]+)\s*W/i)||extract(/Right\s+([\d.]+)\s*W\/kg/i);
+      const cmjW=extract(/Countermovement Jump.*?([\d.]+)\s*W\/kg/i);
+      const cod=extract(/5-10-5[^:]*?(\d\.\d+)\s*s/i)||extract(/Pro Agility.*?(\d\.\d+)\s*s/i);
+      const spd=extract(/10yd Sprint.*?(\d\.\d+)\s*s/i);
+      const djPct=extract(/Drop Jump.*?(\d+)(?:st|nd|rd|th)\s*pct/i)||extract(/(\d+)th pct/i);
+      const hopPct=extract(/Hop Test.*?(\d+)(?:st|nd|rd|th)\s*pct/i);
+      const cmjPct=extract(/Countermovement.*?(\d+)(?:st|nd|rd|th)\s*pct/i);
+      const dropForceR=extract(/Drop Landing Force.*?Right.*?(\d+)\s*N/i)||extract(/(\d+)\s*N.*Single Leg/i);
+      const slHopAsym=extract(/SL Hop.*?Asym[^%]*([\d.]+)%/i)||extract(/Asym[^%]*([\d.]+)%.*Left/i);
+      const cmjTrend=extract(/CMJ.*?(?:up|down)\s*([\d.]+)%/i);
+      const sprintTrend=extract(/10yd Sprint.*?(?:up|down)\s*([\d.]+)%/i);
+      const codTrend=extract(/5-10-5.*?(?:up|down)\s*([\d.]+)%/i);
+
+      const fields={dj_rsi:dj,hop_rsi:hop,sl_hop_l:slHopL,sl_hop_r:slHopR,
+        sl_jump_l:slJumpL,sl_jump_r:slJumpR,cmj_wkg:cmjW,cod,
+        dj_pct:djPct,hop_pct:hopPct,cmj_pct:cmjPct,
+        sl_drop_force_r:dropForceR,sl_hop_asym:slHopAsym,
+        cmj_trend:cmjTrend,sprint_trend:sprintTrend,cod_trend:codTrend};
+
+      let anyMerged=false;
+      Object.entries(fields).forEach(([k,v])=>{
+        if(v!=null&&!ath.vald[k]){ath.vald[k]=v;anyMerged=true;}
+      });
+      if(anyMerged)migrated++;
+    });
+  });
+  if(migrated>0){save();console.log('[Brain v2.0] Migrated VALD data for '+migrated+' athletes from session notes');}
+}
+
+// Run migration after a short delay to let app finish loading
+setTimeout(migrateValdFromSessionNotes, 2000);
+
+console.log('[FitClub CT] Super Trainer Brain '+BRAIN_VERSION+' loaded \u2014 6 coaches + VALD Pro Schema + Migration');
