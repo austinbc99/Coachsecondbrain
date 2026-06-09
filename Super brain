@@ -1,0 +1,252 @@
+
+// ═══════════════════════════════════════════════════════════════
+// SUPER TRAINER BRAIN v1.0 — All 4 additions live here
+// McMillan + Spellman + McConnell + Holler + Natera + Baynton
+// ═══════════════════════════════════════════════════════════════
+const BRAIN_VERSION='v1.0';
+
+const SUPER_TRAINER_BRAIN=`You are the FitClub CT Super Trainer Brain — a synthesis of six elite coaching methodologies embedded in Coach OS, the coaching operating system of Austin Corrigan, ATC, head coach of FitClub CT in Fairfield CT.
+
+FACILITY: Premium youth S&C gym, Fairfield CT. Athletes: lacrosse + soccer, ages 12-18. Tech: VALD ForceDecks + laser timing. Staff: Austin (ATC head coach), Raleigh, Charlie.
+
+AUSTIN APEX GAMES August 8 Boston: 40-yard dash, broad jump, high jump, trap bar deadlift (baseline 435lbs), bench press (baseline 290lbs), mile run. Bodyweight 246 cutting to 235. INJURIES: RIGHT patellar tendinopathy + QL strain. NO front-loaded squat patterns ever. Natera isometric protocol before any knee loading.
+
+KEY ATHLETES:
+Taryn Czick - D1 Villanova lacrosse, 13pct right-leg SL power deficit, right-lead unilateral priority, top speed and COD
+Chase Powers - Achilles managed, elite hop RSI 99th pct NOT transferring to CMJ, iso holds at 60deg knee flexion
+Maggie Davis - soccer, drop jump RSI deficit vs hop RSI, 6-week triphasic block
+Hannah Casano - 17pct left-dominant asymmetry, trap bar focus
+Sloan Shalhoub - lacrosse defender, broad jump vertical sprint 4-week block
+
+STUART McMILLAN SPRINT MECHANICS:
+What we move determines how we move - coach purpose not position
+Acceleration 0-10m: forward lean, drive angle, do NOT upright early
+Max velocity 30m+: upright, dorsiflexed, elastic contact
+Transition zone 10-30m: where youth athletes lose speed - coach explicitly
+Pogo stiffness is the gateway to speed - always precedes sprint work
+Sprint vaccination: all athletes need max velocity exposure weekly regardless of sport
+Session sequence: A-March to A-Skip to Wickets to Fly 20s to Full runs
+
+LES SPELLMAN TRIPHASIC PERIODIZATION:
+Eccentric block weeks 1-3: 3-5 sec lowering, 65-75pct, high volume
+Isometric block weeks 4-5: mid-range holds 3-6 sec, reduce volume
+Concentric block weeks 6-7: explosive intent, velocity-based
+Deload week 8: 40pct volume cut, CNS freshness over fitness
+Plyometric progression: Pogo to Intensive Pogo to SL Intensive Pogo to Bounds
+Intensive pogos only after 3+ weeks basic pogo foundation - must earn it
+No new stimuli last 2 weeks before competition
+
+BLAINE McCONNELL GAMIFICATION MOVEMENT QUALITY:
+Move Well to Look Good to Feel Better - always in that order
+Gamify everything: PR boards, leaderboard, head-to-head times
+Unilateral work every session minimum
+Plyos plus max velocity same session for intermediate-advanced athletes
+Track and post PRs publicly - accountability drives adaptation
+Movement screen every 4 weeks - document asymmetry changes
+
+COACH TONY HOLLER FEED THE CATS:
+Speed is sacred - never sacrifice quality for volume
+Speed work FIRST in every session before any fatigue
+Fly 10s and Fly 20s: 2-6 reps, 2-4x per week, max quality
+Minimum effective dose: less volume, maximum intent, maximum recovery
+Never sprint tired - if fatigued do tempo 70pct or rest
+Final 2 weeks before competition: cut volume 50pct, maintain intensity
+Youth respond BETTER to low volume high quality model
+
+DR ALEX NATERA ISOMETRICS TENDON SCIENCE:
+Tendon loading hierarchy: Isometric to Heavy Slow Resistance to Plyometric to Sport Reactive
+Tendons adapt in weeks, muscles in days - never rush the tendon phase
+EVERY program block starts with 2-3 weeks isometric phase
+Ankle isometrics: SL calf ISO hold 30-45 sec x3, 2x per week non-negotiable
+Plyometric dosing for youth: 80-120 ground contacts per session MAX
+Return to sport gate: greater than 90pct LSI on SL hop AND isometric strength
+Patellar tendinopathy: wall sit 45deg x5x45sec plus leg extension ISO before any loading
+Chase Powers: iso holds at 60deg knee flexion, force-transfer gap protocol
+
+ANNA BAYNTON STRENGTH FOUNDATIONS FEMALE ATHLETES:
+Movement pattern priority: Hip hinge to Squat to Push to Pull to Carry to Rotation
+Female athletes: ACL prevention every session - Nordic, Copenhagen plank, lateral band walk
+Strength foundations block 4 weeks minimum before power slash speed emphasis
+Deceleration work 2x per week: plant-and-cut, 90-degree cuts, backpedal-to-sprint
+RTS dual gate: LSI greater than 90pct AND psychological readiness - both required
+
+UNIVERSAL RULES apply to every program:
+1. Always start block with isometric phase Natera before loading
+2. Sprint work always FIRST in session Holler - never after lifting
+3. Triphasic structure governs all multi-week blocks Spellman
+4. Unilateral work every session weaker limb leads McConnell
+5. Plyometric ground contacts tracked and capped at 120 per session youth Natera
+6. Right-side deficit athletes: right-leg-lead on all SL exercises until LSI under 8pct
+7. NO front-loaded squat patterns for Austin ever - QL patellar constraint
+8. Female soccer lacrosse: ACL prevention trio in every warm-up Baynton
+9. Speed sessions: A-March to A-Skip to Pogos to Fly 20s to Full sprint McMillan
+10. Final competition block: volume minus 40pct, intensity maintained, no new movements`;
+
+function getContextualBrain(context){
+  const c=(context||'').toLowerCase();
+  if(c.includes('apex')||c.includes('program')||c.includes('block')||c.includes('mesocycle')||c.includes('full'))
+    return SUPER_TRAINER_BRAIN;
+  if(c.includes('sprint')||c.includes('speed')||c.includes('40')||c.includes('fly')||c.includes('acceleration'))
+    return SUPER_TRAINER_BRAIN.split('LES SPELLMAN')[0]+'\nCOACH TONY HOLLER FEED THE CATS:\nSpeed work FIRST every session. Fly 10s 20s 2-6 reps max quality never sprint tired. Minimum effective dose. A-March to A-Skip to Pogos to Fly 20s to Full sprints. Youth respond BETTER to low volume high quality.';
+  if(c.includes('tendon')||c.includes('achilles')||c.includes('patell')||c.includes('rts')||c.includes('injur'))
+    return 'FitClub CT Coach OS Tendon Injury Protocol.\nDR ALEX NATERA ISOMETRICS TENDON SCIENCE:\nTendon hierarchy Isometric to Heavy Slow to Plyometric to Sport Reactive. EVERY block starts 2-3 weeks isometric. Patellar wall sit 45deg x5x45sec plus leg extension ISO before loading. Ankle SL calf ISO 30-45 sec x3 2x per week. Youth plyos 80-120 ground contacts MAX per session. Chase Powers iso holds 60deg knee flexion force-transfer gap. Austin right knee no front-loaded patterns iso-first always. RTS: LSI greater 90pct AND psychological readiness dual gate.';
+  if(c.includes('strength')||c.includes('lift')||c.includes('trap')||c.includes('bench')||c.includes('deadlift'))
+    return SUPER_TRAINER_BRAIN.split('COACH TONY HOLLER')[0];
+  if(c.includes('female')||c.includes('soccer')||c.includes('acl')||c.includes('girl'))
+    return SUPER_TRAINER_BRAIN;
+  return SUPER_TRAINER_BRAIN;
+}
+
+function validateAthData(ath){
+  const warnings=[];
+  if(!ath)return['No athlete data found'];
+  const v=ath.vald||{};
+  const hasData=Object.values(v).some(x=>x!==undefined&&x!==null&&x!=='');
+  if(!hasData)warnings.push('No VALD data on file — program using defaults. Run ForceDecks retest before this block.');
+  const lastSess=lastSessDate(ath.id);
+  if(lastSess&&daysSince(lastSess)>56)warnings.push('VALD data may be stale ('+daysSince(lastSess)+' days). Retest recommended.');
+  if(v.asy&&parseFloat(v.asy)>15&&!v.asys)warnings.push('Asymmetry '+v.asy+'% recorded but dominant side unknown — check VALD entry.');
+  if(v.asy&&parseFloat(v.asy)>10)warnings.push('Asymmetry '+v.asy+'% — Brain will prioritize '+((v.asys==='Left'||v.asys==='Right')?v.asys:'weaker')+'-side lead on all unilateral work.');
+  return warnings;
+}
+
+
+
+function logWeekActuals(athId,wkNum,key,val){
+  const p=S.programs[athId];if(!p)return;
+  if(!p.actuals)p.actuals={};
+  if(!p.actuals['wk'+wkNum])p.actuals['wk'+wkNum]={};
+  p.actuals['wk'+wkNum][key]=val;
+  save();toast('Logged');
+  clearTimeout(p._adjustTimer);
+  p._adjustTimer=setTimeout(()=>autoAdjustNextWeek(athId,wkNum),1200);
+}
+
+async function autoAdjustNextWeek(athId,completedWeekNum){
+  const p=S.programs[athId];
+  if(!p||!_apiKey)return;
+  const ath=S.athletes.find(a=>a.id===athId);if(!ath)return;
+  const actuals=p.actuals&&p.actuals['wk'+completedWeekNum];
+  if(!actuals||!Object.keys(actuals).length)return;
+  const nextWkIdx=p.weeks_data.findIndex(w=>w.week===completedWeekNum+1);
+  if(nextWkIdx<0)return;
+  const nextWeek=p.weeks_data[nextWkIdx];
+  if(!nextWeek||nextWeek.phase==='Retest')return;
+  const m=getMetrics(ath);
+  const actualsText=Object.entries(actuals).map(([k,v])=>k+': '+v).join(', ');
+  const nextExercises=(nextWeek.days||[]).flatMap(d=>(d.sessions||[]).flatMap(s=>s.exercises||[])).slice(0,8).map(e=>e.name+' '+e.sets+'x'+e.reps+' @ '+(e.weight||'?')+' RPE'+(e.rpe||'?')).join(', ');
+  const prompt='ATHLETE: '+an(ath)+', '+ath.sport+', age '+ath.age+'\nVALD: CMJ='+m.cmj+'cm RSI='+m.rsi+' Asym='+m.asy+'% '+(m.asys||'')+' Trap='+m.trap+'lbs\nWEEK '+completedWeekNum+' ACTUALS: '+actualsText+'\nNEXT WEEK '+(completedWeekNum+1)+' PLAN: '+nextExercises+'\nPHASE: '+nextWeek.phase+'\n\nADJUST NEXT WEEK. Rules:\n- RPE actual exceeds planned: reduce load 5-10pct\n- All sets hit easily: increase load 3-5pct\n- Right-side lag: add 1 extra set right-lead\n- Natera: if more than 3 missed sets do NOT increase plyometric volume\n- Holler: if sprint reps exceed 6 cut next week to 4 reps max\n- Spellman: respect phase '+nextWeek.phase+' do not change tempo\n- Austin: never add front-loaded squat patterns\nReturn ONLY adjusted week JSON. Same schema. Start { end }. No markdown.';
+  const ind=document.createElement('div');
+  ind.id='adjust-indicator';
+  ind.style.cssText='position:fixed;bottom:70px;right:16px;background:var(--bg2);border:1px solid var(--accent);border-radius:20px;padding:6px 14px;font-size:9px;color:var(--accent);letter-spacing:1px;z-index:500;pointer-events:none;';
+  ind.textContent='\u26a1 Brain adjusting wk'+(completedWeekNum+1)+'...';
+  document.body.appendChild(ind);
+  try{
+    const res=await apiFetch({max_tokens:1500,system:'JSON-only week adjuster for FitClub CT Coach OS. Output ONLY valid JSON same schema as input. Start { end }. No markdown.',messages:[{role:'user',content:prompt}]});
+    const d=await res.json();
+    const adjInd=document.getElementById('adjust-indicator');if(adjInd)adjInd.remove();
+    if(d.error)return;
+    const raw=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'';
+    const adjusted=parseJSONLoose(raw)||parseJSONLoose(repairJSON(raw));
+    if(!adjusted||!adjusted.days)return;
+    adjusted.week=completedWeekNum+1;
+    adjusted.phase=nextWeek.phase;
+    adjusted.focus=adjusted.focus||nextWeek.focus;
+    adjusted._autoAdjusted=true;
+    adjusted._adjustedFrom='wk'+completedWeekNum+' actuals '+new Date().toLocaleDateString();
+    adjusted._brainVersion=BRAIN_VERSION;
+    p.weeks_data[nextWkIdx]=adjusted;
+    p.brainVersion=BRAIN_VERSION;
+    save();
+    if(S.page==='programs')showProgDetail(athId,nextWkIdx);
+    toast('\u26a1 Week '+(completedWeekNum+1)+' auto-adjusted by Brain \u2713');
+  }catch(e){
+    const adjInd=document.getElementById('adjust-indicator');if(adjInd)adjInd.remove();
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// PATCH: Override sendBrain to use Super Trainer Brain
+// ═══════════════════════════════════════════════════════
+const _originalSendBrain = window.sendBrain;
+window.sendBrain = async function(){
+  const inp=document.getElementById('ai-input');
+  if(!inp)return;
+  const msg=inp.value.trim();if(!msg)return;
+  inp.value='';
+  // Import addAIMsg and other helpers from global scope
+  addAIMsg('user',msg);
+  if(typeof _aiHist !== 'undefined')_aiHist.push({role:'user',content:msg});
+  const t=addAIMsg('brain','...');
+  if(!_apiKey){t.remove();addAIMsg('brain','Set your API key first.');return;}
+  try{
+    const _brainCtx=getContextualBrain(msg);
+    const sys=_brainCtx+'\n\nROSTER ('+S.athletes.length+'):\n'+S.athletes.slice(0,12).map(a=>{const m=getMetrics(a);return an(a)+' ('+a.sport+' '+a.position+', age '+a.age+') CMJ:'+m.cmj+' RSI:'+m.rsi+' Asym:'+m.asy+'% Trap:'+m.trap+'lbs Speed:'+m.spd+'s';}).join('\n');
+    const msgs=typeof _aiHist!=='undefined'?[..._aiHist]:[];
+    const res=await apiFetch({max_tokens:1000,system:sys,messages:msgs});
+    const d=await res.json();
+    if(d.error){t.remove();addAIMsg('brain','Error: '+d.error.message);return;}
+    const text=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'No response.';
+    t.remove();addAIMsg('brain',text);
+    if(typeof _aiHist!=='undefined'){_aiHist.push({role:'assistant',content:text});if(_aiHist.length>20)_aiHist=_aiHist.slice(-20);}
+  }catch(e){t.remove();addAIMsg('brain','Network error: '+e.message);}
+};
+
+// ═══════════════════════════════════════════════════════
+// PATCH: Override genProgram validation gate
+// ═══════════════════════════════════════════════════════
+const _origGenProgram = window.genProgram;
+window.genProgram = async function(){
+  const athId=document.getElementById('prog-ath').value;
+  if(!athId){toast('Select athlete');return;}
+  const ath=S.athletes.find(a=>a.id===athId);
+  if(ath){
+    const warnings=validateAthData(ath);
+    const existingBanner=document.getElementById('prog-warn-banner');
+    if(existingBanner)existingBanner.remove();
+    if(warnings.length){
+      const banner=document.createElement('div');
+      banner.id='prog-warn-banner';
+      banner.style.cssText='background:rgba(255,140,66,.08);border:1px solid rgba(255,140,66,.35);border-radius:3px;padding:10px 14px;margin-bottom:12px;font-size:10px;line-height:1.9;color:#ff8c42;';
+      banner.innerHTML='<div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;opacity:.7;">\u26a0 Brain Pre-Check</div>'+warnings.join('<br>');
+      const det=document.getElementById('prog-detail');
+      if(det){det.innerHTML='';det.appendChild(banner);}
+    }
+    if(!S.programs[athId])S.programs[athId]={};
+    S.programs[athId].brainVersion=BRAIN_VERSION;
+  }
+  return _origGenProgram.apply(this, arguments);
+};
+
+// ═══════════════════════════════════════════════════════
+// PATCH: Override buildWeekPrompt to use Brain context router
+// ═══════════════════════════════════════════════════════
+const _origBuildWeekPrompt = window.buildWeekPrompt;
+window.buildWeekPrompt = function(wk,totalWeeks,ath,opts,prevWeekData,actuals){
+  // Call original but swap out COACHING_BIBLE for brain context
+  const brainCtx = getContextualBrain('program '+opts.goal+' '+ath.sport+' strength speed block');
+  // The original function uses COACHING_BIBLE as first line of the return string
+  // We intercept by temporarily overriding COACHING_BIBLE
+  const origBible = window.COACHING_BIBLE || '';
+  // Replace by calling original and then swapping
+  if(_origBuildWeekPrompt) {
+    const result = _origBuildWeekPrompt.apply(this, arguments);
+    // Replace COACHING_BIBLE portion with brain context
+    if(result && origBible) {
+      return result.replace(origBible, brainCtx);
+    }
+    return brainCtx + '\n\n' + (result || '');
+  }
+  return brainCtx;
+};
+
+// Add Brain version badge to Sentinel
+const _origRunSentinelChecks = window.runSentinelChecks;
+window.runSentinelChecks = async function(){
+  const checks = _origRunSentinelChecks ? await _origRunSentinelChecks() : [];
+  checks.splice(1, 0, {n:'Super Trainer Brain',ok:typeof SUPER_TRAINER_BRAIN!=='undefined',info:typeof SUPER_TRAINER_BRAIN!=='undefined'?'Loaded — Brain '+BRAIN_VERSION+' (6 coaches)':'MISSING — check patch.js'});
+  return checks;
+};
+
+console.log('[FitClub CT] Super Trainer Brain ' + BRAIN_VERSION + ' loaded — McMillan, Spellman, McConnell, Holler, Natera, Baynton');
