@@ -884,5 +884,5 @@ function seedDemo(){S.athletes=[{id:uid(),first:'Hannah',last:'Casano',sport:'La
 (async function init(){try{await load();await loadKey();await loadSyncConfig();if(!S.athletes||!S.athletes.length)seedDemo();go(S.page||'dash');if(syncOn())pullState(false).then(()=>{if(pageInits[S.page])pageInits[S.page]();}).catch(()=>{});}catch(err){document.body.innerHTML='<div style="padding:40px;color:#efefef;font-family:ui-monospace,monospace;background:#090909;min-height:100vh;"><h2 style="color:#b8ff57;">Startup Error</h2><pre style="background:#111;padding:12px;font-size:10px;margin-top:12px;border-radius:4px;">'+err.message+'</pre><button onclick="(async()=>{try{await window.storage.delete(\'fct_brain_v1\');}catch(e){}location.reload()})()" style="margin-top:12px;background:#b8ff57;color:#000;border:none;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:700;">Reset &amp; Reload</button></div>';}})();
 </script>
 </body>  
-<script src="patch.js"></script>
+<script src="patch.js?v=2"></script>
 </html>
