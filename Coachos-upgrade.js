@@ -1,14 +1,16 @@
 /* ════════════════════════════════════════════════════════════════════
-   FITCLUB CT — COACH OS · UPGRADE BUNDLE (coachos-upgrade.js)  v2
+   FITCLUB CT — COACH OS · UPGRADE BUNDLE (coachos-upgrade.js)  v3
    Load AFTER index.html's main script AND AFTER brain.js.
    index.html order:  patch.js -> brain.js -> coachos-upgrade.js
-   Bump the tag to ?v=2 when you re-commit this so phones grab it fresh.
+   Re-commit this file and bump its tag to ?v=3 so phones grab it fresh.
 
-   Three additive, defensive layers (commit this one file):
+   Four additive, defensive layers (commit this one file):
      1. VALD snapshot history   — dated snapshots for trends
      2. Athlete Intelligence v2 — improvement banner, value labels,
                                   baseline line, all-tests strip (Slide 2)
      3. Sprint Lab F-V map      — named, quadrant-colored, shaded zones
+     4. OHM Force-Velocity      — load vs watts curve, multi-athlete
+                                  overlay + quick log (Sprint Lab)
    ════════════════════════════════════════════════════════════════════ */
 
 /* ════════════════════════════════════════════════════════════════════
@@ -397,4 +399,148 @@ try{ if(typeof pageInits!=='undefined' && pageInits) pageInits.sprint = wrapped;
 try{ if(S && S.page==='sprint') setTimeout(buildFV,200); }catch(e){}
 
 console.log('[fv] Sprint Lab F-V map upgrade loaded');
+})();
+/* ════════════════════════════════════════════════════════════════════
+   FITCLUB CT — COACH OS · OHM FORCE-VELOCITY (ohm.js)  [Sprint Lab]
+   Real F-V curve from OHM Constant Force data: load (lb) on X, avg watts
+   on Y, one line per athlete so Grace/Kailea/Dani overlay. Select one
+   athlete to see their curve shift session-to-session. Quick log form
+   creates the athlete if they're not in the roster yet. Additive.
+   ════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if(window._ohmPatched) return; window._ohmPatched = true;
+
+var PAL=['#b8ff57','#42a5ff','#ff8c42','#e36bff','#ffd166','#3a7a52','#ff4d4d','#5ad1c8'];
+var _sel=null, _chart=null;
+function num(v){var n=parseFloat(v);return isNaN(n)?null:n;}
+function withOhm(){ return (S.athletes||[]).filter(function(a){return Array.isArray(a.ohm)&&a.ohm.length;}); }
+function colorFor(a){ var i=(S.athletes||[]).findIndex(function(x){return x.id===a.id;}); return PAL[(i<0?0:i)%PAL.length]; }
+function latest(a){ return a.ohm.slice().sort(function(x,y){return x.date<y.date?-1:1;})[a.ohm.length-1]; }
+
+function inject(){
+  var page=document.getElementById('pg-sprint'); if(!page) return;
+  if(document.getElementById('ohm-fv-card')){ render(); return; }
+  var card=document.createElement('div'); card.className='card'; card.id='ohm-fv-card';
+  card.style.cssText='border-color:rgba(184,255,87,.25);';
+  card.innerHTML='<div class="card-title" style="justify-content:space-between;"><span>\u26a1 OHM Force\u2013Velocity</span>'
+    +'<button class="btn btn-sm" onclick="ohmToggleForm()">+ Log Session</button></div>'
+    +'<div id="ohm-form" style="display:none;"></div>'
+    +'<div id="ohm-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;"></div>'
+    +'<canvas id="ohm-chart" style="max-height:260px;"></canvas>'
+    +'<div class="muted" id="ohm-hint" style="margin-top:6px;"></div>';
+  var anchor=null;
+  Array.prototype.slice.call(page.querySelectorAll('.card')).forEach(function(c){
+    var t=c.querySelector('.card-title'); if(t && /F-?V Profile Map/i.test(t.textContent)) anchor=c;
+  });
+  if(anchor) anchor.insertAdjacentElement('afterend',card);
+  else { var cols=page.querySelectorAll('.g2 > div'); (cols[1]||page).appendChild(card); }
+  render();
+}
+
+function render(){
+  var chipsEl=document.getElementById('ohm-chips'); if(!chipsEl) return;
+  var data=withOhm(); var hint=document.getElementById('ohm-hint');
+  if(!data.length){
+    chipsEl.innerHTML='';
+    if(hint) hint.innerHTML='No OHM data yet. Tap <b>+ Log Session</b> and enter avg watts at each load (Speed 25 / Mid 45 / Force 65).';
+    if(_chart){try{_chart.destroy();}catch(e){}_chart=null;}
+    return;
+  }
+  if(!_sel) _sel=data.map(function(a){return a.id;});
+  chipsEl.innerHTML=data.map(function(a){
+    var on=_sel.indexOf(a.id)>=0, c=colorFor(a);
+    return '<span class="kpi-chip '+(on?'on':'')+'"'+(on?' style="border-color:'+c+';color:'+c+';background:'+c+'18;"':'')+' onclick="ohmTog(\''+a.id+'\')">'+a.first+'</span>';
+  }).join('');
+  draw(data);
+}
+
+var vlPlugin={id:'ohmVL',afterDatasetsDraw:function(chart){
+  var ctx=chart.ctx;
+  chart.data.datasets.forEach(function(ds,di){
+    var meta=chart.getDatasetMeta(di); if(meta.hidden)return;
+    meta.data.forEach(function(pt,i){
+      var raw=ds.data[i]; if(!raw||raw.y==null||!pt)return;
+      ctx.save(); ctx.font='700 9px ui-monospace,monospace'; ctx.fillStyle=ds.borderColor; ctx.textAlign='center';
+      ctx.fillText(Math.round(raw.y)+'W', pt.x, pt.y-7); ctx.restore();
+    });
+  });
+}};
+
+function draw(data){
+  var el=document.getElementById('ohm-chart'); if(!el||typeof Chart==='undefined') return;
+  if(_chart){try{_chart.destroy();}catch(e){}_chart=null;}
+  var sel=data.filter(function(a){return _sel.indexOf(a.id)>=0;});
+  var hint=document.getElementById('ohm-hint'); var datasets=[];
+  if(sel.length===1){
+    var a=sel[0], c=colorFor(a);
+    var ss=a.ohm.slice().sort(function(x,y){return x.date<y.date?-1:1;});
+    ss.forEach(function(s,i){
+      var pts=(s.pts||[]).filter(function(p){return num(p.load)!=null&&num(p.w)!=null;}).sort(function(p,q){return p.load-q.load;});
+      var isLast=i===ss.length-1;
+      datasets.push({label:s.date.slice(5), data:pts.map(function(p){return {x:p.load,y:p.w};}), borderColor:c, backgroundColor:c+'14', borderWidth:isLast?2.5:1.4, pointRadius:4, tension:0.2, borderDash:isLast?[]:[4,3]});
+    });
+    if(hint) hint.textContent=a.first+' \u2014 each line is a session; solid = latest. Curve lifting/shifting left = the work is transferring.';
+  } else {
+    sel.forEach(function(a){
+      var c=colorFor(a), s=latest(a);
+      var pts=(s.pts||[]).filter(function(p){return num(p.load)!=null&&num(p.w)!=null;}).sort(function(p,q){return p.load-q.load;});
+      datasets.push({label:a.first, data:pts.map(function(p){return {x:p.load,y:p.w};}), borderColor:c, backgroundColor:c+'14', borderWidth:2.5, pointRadius:4, tension:0.2});
+    });
+    if(hint) hint.textContent='Latest curve per athlete \u2014 steep climb to the right = force-dominant; flat/high on the left = speed-dominant.';
+  }
+  try{
+    _chart=new Chart(el,{type:'line',data:{datasets:datasets},plugins:[vlPlugin],options:{
+      responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{top:16}},
+      plugins:{legend:{display:true,labels:{color:'#888',font:{size:9}}},tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+c.raw.x+'lb \u2192 '+c.raw.y+'W';}}}},
+      scales:{x:{type:'linear',title:{display:true,text:'Load (lb) \u2014 heavier \u2192',color:'#888',font:{size:9}},grid:{color:'#161616'},ticks:{color:'#888',font:{size:9}}},
+              y:{title:{display:true,text:'Avg Power (W) \u2191',color:'#888',font:{size:9}},grid:{color:'#161616'},ticks:{color:'#888',font:{size:9}}}}}
+    });
+  }catch(e){console.warn('[ohm] chart',e);}
+}
+
+window.ohmTog=function(id){ if(!_sel)_sel=[]; var i=_sel.indexOf(id); if(i>=0)_sel.splice(i,1); else _sel.push(id); render(); };
+
+window.ohmToggleForm=function(){
+  var f=document.getElementById('ohm-form'); if(!f)return;
+  if(f.style.display!=='none'){ f.style.display='none'; f.innerHTML=''; return; }
+  f.style.display='block';
+  var opts=(S.athletes||[]).map(function(a){return '<option value="'+a.id+'">'+an(a)+'</option>';}).join('');
+  f.innerHTML='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:10px;">'
+    +'<div class="frow"><div class="fg"><label>Athlete</label><select id="ohm-ath"><option value="">+ New athlete</option>'+opts+'</select></div>'
+    +'<div class="fg" id="ohm-newname" style="display:none;"><label>First name</label><input id="ohm-first"></div></div>'
+    +'<div class="fg"><label>Date</label><input id="ohm-date" type="date" value="'+today()+'"></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:8px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;"><div>Load (lb)</div><div>Avg Watts</div></div>'
+    +[25,45,65].map(function(ld,i){return '<div class="frow"><div class="fg"><input id="ohm-l'+i+'" type="number" value="'+ld+'"></div><div class="fg"><input id="ohm-w'+i+'" type="number" placeholder="avg W"></div></div>';}).join('')
+    +'<div class="frow"><div class="fg"><input id="ohm-l3" type="number" placeholder="+load"></div><div class="fg"><input id="ohm-w3" type="number" placeholder="avg W"></div></div>'
+    +'<button class="btn btn-primary btn-sm" style="width:100%;margin-top:4px;" onclick="ohmSave()">\u2713 Save Session</button></div>';
+  var sel=document.getElementById('ohm-ath');
+  sel.onchange=function(){document.getElementById('ohm-newname').style.display=sel.value===''?'':'none';};
+  sel.onchange();
+};
+
+window.ohmSave=function(){
+  var selId=document.getElementById('ohm-ath').value;
+  var date=document.getElementById('ohm-date').value||today();
+  var ath=null;
+  if(selId){ ath=S.athletes.find(function(x){return x.id===selId;}); }
+  else { var fn=((document.getElementById('ohm-first')||{}).value||'').trim(); if(!fn){toast('Pick or name an athlete');return;}
+    ath={id:uid(),first:fn,last:'',sport:'Soccer',position:'',age:'',status:'Active',notes:'',vald:{}}; S.athletes.push(ath); }
+  if(!ath){toast('Pick athlete');return;}
+  var pts=[];
+  for(var i=0;i<4;i++){ var l=num(((document.getElementById('ohm-l'+i))||{}).value), w=num(((document.getElementById('ohm-w'+i))||{}).value); if(l!=null&&w!=null) pts.push({load:l,w:w}); }
+  if(!pts.length){toast('Enter at least one load + watts');return;}
+  if(!Array.isArray(ath.ohm))ath.ohm=[];
+  var ex=ath.ohm.findIndex(function(s){return s.date===date;}); var rec={date:date,pts:pts};
+  if(ex>=0)ath.ohm[ex]=rec; else ath.ohm.push(rec);
+  save(); toast('OHM session saved \u2713'); _sel=null; ohmToggleForm(); render();
+};
+
+var _prev=window.initSprint;
+function wrapped(){ try{ if(_prev)_prev.apply(this,arguments); }catch(e){} setTimeout(inject,180); }
+window.initSprint=wrapped;
+try{ if(typeof pageInits!=='undefined'&&pageInits) pageInits.sprint=wrapped; }catch(e){}
+try{ if(S&&S.page==='sprint') setTimeout(inject,220); }catch(e){}
+
+console.log('[ohm] OHM Force-Velocity loaded');
 })();
