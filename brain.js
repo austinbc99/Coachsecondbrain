@@ -1,0 +1,644 @@
+// ═══════════════════════════════════════════════════════════════
+// SUPER TRAINER BRAIN v2.0 — Full VALD + Pro Level Upgrade
+// McMillan + Spellman + McConnell + Holler + Natera + Baynton
+// ═══════════════════════════════════════════════════════════════
+const BRAIN_VERSION='v2.0';
+
+const SUPER_TRAINER_BRAIN=`You are the FitClub CT Super Trainer Brain — a synthesis of six elite coaching methodologies embedded in Coach OS, the coaching operating system of Austin Corrigan, ATC, head coach of FitClub CT in Fairfield CT.
+
+FACILITY: Premium youth S&C gym, Fairfield CT. Athletes: lacrosse + soccer, ages 12-18. Tech: VALD ForceDecks + laser timing. Staff: Austin (ATC head coach), Raleigh, Charlie.
+
+AUSTIN APEX GAMES August 8 Boston: 40-yard dash, broad jump, high jump, trap bar deadlift (baseline 435lbs), bench press (baseline 290lbs), mile run. Bodyweight 246 cutting to 235. INJURIES: RIGHT patellar tendinopathy + QL strain. NO front-loaded squat patterns ever. Natera isometric protocol before any knee loading.
+
+KEY ATHLETES:
+Taryn Czick - D1 Villanova lacrosse, 13pct right-leg SL power deficit, right-lead unilateral priority, top speed and COD
+Chase Powers - Achilles managed, elite hop RSI 99th pct NOT transferring to CMJ, iso holds at 60deg knee flexion
+Maggie Davis - soccer, drop jump RSI deficit vs hop RSI, 6-week triphasic block
+Hannah Casano - 17pct left-dominant asymmetry, trap bar focus
+Sloan Shalhoub - lacrosse defender, broad jump vertical sprint 4-week block
+Genesis Torres - CMJ declining 3.6pct, sprint slowing 1.7pct, DJ RSI 1.21 (77th pct) vs Hop RSI 2.35 (89th pct) — bilateral force deficit, linear speed priority
+
+VALD INTERPRETATION FRAMEWORK:
+Drop Jump RSI under 0.9 = deficit. 0.9-1.4 = developing. Over 1.4 = elite.
+Hop Test RSI under 1.5 = deficit. 1.5-2.0 = good. Over 2.0 = elite.
+SL Hop RSI: left vs right gap over 10pct = priority asymmetry.
+CMJ W/kg: under 30 = developing. 30-45 = good. Over 45 = elite female. Over 55 = elite male.
+SL Jump Power W/kg asymmetry over 10pct = unilateral deficit — program right-lead.
+DJ RSI gap vs Hop RSI: if hop RSI much higher than DJ RSI = tendon stiffness deficit under high load — Natera isometric phase priority.
+CMJ declining plus Hop RSI improving = losing bilateral power but gaining stiffness — add bilateral force work.
+Sprint slowing despite RSI improving = speed not transferring — add sprint mechanics work McMillan protocol.
+Percentile drops across retests = overtraining signal — reduce volume Holler minimum dose.
+
+STUART McMILLAN SPRINT MECHANICS:
+What we move determines how we move - coach purpose not position
+Acceleration 0-10m: forward lean, drive angle, do NOT upright early
+Max velocity 30m+: upright, dorsiflexed, elastic contact
+Transition zone 10-30m: where youth athletes lose speed - coach explicitly
+Pogo stiffness is the gateway to speed - always precedes sprint work
+Sprint vaccination: all athletes need max velocity exposure weekly regardless of sport
+Session sequence: A-March to A-Skip to Wickets to Fly 20s to Full runs
+
+LES SPELLMAN TRIPHASIC PERIODIZATION:
+Eccentric block weeks 1-3: 3-5 sec lowering, 65-75pct, high volume
+Isometric block weeks 4-5: mid-range holds 3-6 sec, reduce volume
+Concentric block weeks 6-7: explosive intent, velocity-based
+Deload week 8: 40pct volume cut, CNS freshness over fitness
+Plyometric progression: Pogo to Intensive Pogo to SL Intensive Pogo to Bounds
+Intensive pogos only after 3+ weeks basic pogo foundation - must earn it
+No new stimuli last 2 weeks before competition
+
+BLAINE McCONNELL GAMIFICATION MOVEMENT QUALITY:
+Move Well to Look Good to Feel Better - always in that order
+Gamify everything: PR boards, leaderboard, head-to-head times
+Unilateral work every session minimum
+Plyos plus max velocity same session for intermediate-advanced athletes
+Track and post PRs publicly - accountability drives adaptation
+Movement screen every 4 weeks - document asymmetry changes
+
+COACH TONY HOLLER FEED THE CATS:
+Speed is sacred - never sacrifice quality for volume
+Speed work FIRST in every session before any fatigue
+Fly 10s and Fly 20s: 2-6 reps, 2-4x per week, max quality
+Minimum effective dose: less volume, maximum intent, maximum recovery
+Never sprint tired - if fatigued do tempo 70pct or rest
+Final 2 weeks before competition: cut volume 50pct, maintain intensity
+Youth respond BETTER to low volume high quality model
+
+DR ALEX NATERA ISOMETRICS TENDON SCIENCE:
+Tendon loading hierarchy: Isometric to Heavy Slow Resistance to Plyometric to Sport Reactive
+Tendons adapt in weeks, muscles in days - never rush the tendon phase
+EVERY program block starts with 2-3 weeks isometric phase
+Ankle isometrics: SL calf ISO hold 30-45 sec x3, 2x per week non-negotiable
+Plyometric dosing for youth: 80-120 ground contacts per session MAX
+Return to sport gate: greater than 90pct LSI on SL hop AND isometric strength
+Patellar tendinopathy: wall sit 45deg x5x45sec plus leg extension ISO before any loading
+Chase Powers: iso holds at 60deg knee flexion, force-transfer gap protocol
+DJ RSI vs Hop RSI gap: prioritize drop jump specific loading if DJ RSI under Hop RSI by more than 0.5
+
+ANNA BAYNTON STRENGTH FOUNDATIONS FEMALE ATHLETES:
+Movement pattern priority: Hip hinge to Squat to Push to Pull to Carry to Rotation
+Female athletes: ACL prevention every session - Nordic, Copenhagen plank, lateral band walk
+Strength foundations block 4 weeks minimum before power slash speed emphasis
+Deceleration work 2x per week: plant-and-cut, 90-degree cuts, backpedal-to-sprint
+RTS dual gate: LSI greater than 90pct AND psychological readiness - both required
+
+UNIVERSAL RULES apply to every program:
+1. Always start block with isometric phase Natera before loading
+2. Sprint work always FIRST in session Holler - never after lifting
+3. Triphasic structure governs all multi-week blocks Spellman
+4. Unilateral work every session weaker limb leads McConnell
+5. Plyometric ground contacts tracked and capped at 120 per session youth Natera
+6. Right-side deficit athletes: right-leg-lead on all SL exercises until LSI under 8pct
+7. NO front-loaded squat patterns for Austin ever - QL patellar constraint
+8. Female soccer lacrosse: ACL prevention trio in every warm-up Baynton
+9. Speed sessions: A-March to A-Skip to Pogos to Fly 20s to Full sprint McMillan
+10. Final competition block: volume minus 40pct, intensity maintained, no new movements`;
+
+function getContextualBrain(context){
+  const c=(context||'').toLowerCase();
+  if(c.includes('apex')||c.includes('program')||c.includes('block')||c.includes('mesocycle')||c.includes('full'))
+    return SUPER_TRAINER_BRAIN;
+  if(c.includes('sprint')||c.includes('speed')||c.includes('40')||c.includes('fly')||c.includes('acceleration'))
+    return SUPER_TRAINER_BRAIN.split('LES SPELLMAN')[0]+'\nCOACH TONY HOLLER FEED THE CATS:\nSpeed work FIRST every session. Fly 10s 20s 2-6 reps max quality never sprint tired. Minimum effective dose. A-March to A-Skip to Pogos to Fly 20s to Full sprints. Youth respond BETTER to low volume high quality.';
+  if(c.includes('tendon')||c.includes('achilles')||c.includes('patell')||c.includes('rts')||c.includes('injur'))
+    return 'FitClub CT Tendon Protocol.\nDR ALEX NATERA: Tendon hierarchy Isometric to Heavy Slow to Plyometric to Sport Reactive. EVERY block starts 2-3 weeks isometric. Patellar wall sit 45deg x5x45sec. Ankle SL calf ISO 30-45 sec x3 2x per week. Youth plyos 80-120 ground contacts MAX. Chase Powers iso holds 60deg knee flexion. Austin right knee no front-loaded patterns. RTS LSI greater 90pct AND psychological readiness.';
+  if(c.includes('vald')||c.includes('rsi')||c.includes('asymm')||c.includes('force plate'))
+    return SUPER_TRAINER_BRAIN;
+  if(c.includes('female')||c.includes('soccer')||c.includes('acl')||c.includes('girl'))
+    return SUPER_TRAINER_BRAIN;
+  if(c.includes('strength')||c.includes('lift')||c.includes('trap')||c.includes('bench')||c.includes('deadlift'))
+    return SUPER_TRAINER_BRAIN.split('COACH TONY HOLLER')[0];
+  return SUPER_TRAINER_BRAIN;
+}
+
+function validateAthData(ath){
+  const warnings=[];
+  if(!ath)return['No athlete data found'];
+  const v=ath.vald||{};
+  const hasData=Object.values(v).some(x=>x!==undefined&&x!==null&&x!=='');
+  if(!hasData)warnings.push('No VALD data on file — program using defaults. Run ForceDecks retest before this block.');
+  const lastSess=lastSessDate(ath.id);
+  if(lastSess&&daysSince(lastSess)>56)warnings.push('VALD data may be stale ('+daysSince(lastSess)+' days). Retest recommended.');
+  if(v.asy&&parseFloat(v.asy)>15&&!v.asys)warnings.push('Asymmetry '+v.asy+'% recorded but dominant side unknown — check VALD entry.');
+  if(v.asy&&parseFloat(v.asy)>10)warnings.push('Asymmetry '+v.asy+'% — Brain will prioritize '+((v.asys==='Left'||v.asys==='Right')?v.asys:'weaker')+'-side lead on all unilateral work.');
+  // New v2.0 checks
+  if(v.dj_rsi&&v.hop_rsi&&(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi))>0.5)
+    warnings.push('DJ RSI ('+v.dj_rsi+') significantly lower than Hop RSI ('+v.hop_rsi+') — tendon stiffness deficit under load. Natera drop-jump loading protocol priority.');
+  if(v.cmj_trend&&parseFloat(v.cmj_trend)<-2)
+    warnings.push('CMJ declining '+Math.abs(v.cmj_trend)+'% — bilateral power loss. Add force production work before reactive training.');
+  if(v.sprint_trend&&parseFloat(v.sprint_trend)>1)
+    warnings.push('Sprint speed declining '+v.sprint_trend+'% — linear speed is weak link. McMillan sprint mechanics priority.');
+  return warnings;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADDITION 2 — logWeekActuals + autoAdjustNextWeek (unchanged from v1)
+// ═══════════════════════════════════════════════════════════════
+function logWeekActuals(athId,wkNum,key,val){
+  const p=S.programs[athId];if(!p)return;
+  if(!p.actuals)p.actuals={};
+  if(!p.actuals['wk'+wkNum])p.actuals['wk'+wkNum]={};
+  p.actuals['wk'+wkNum][key]=val;
+  save();toast('Logged');
+  clearTimeout(p._adjustTimer);
+  p._adjustTimer=setTimeout(()=>autoAdjustNextWeek(athId,wkNum),1200);
+}
+
+async function autoAdjustNextWeek(athId,completedWeekNum){
+  const p=S.programs[athId];
+  if(!p||!_apiKey)return;
+  const ath=S.athletes.find(a=>a.id===athId);if(!ath)return;
+  const actuals=p.actuals&&p.actuals['wk'+completedWeekNum];
+  if(!actuals||!Object.keys(actuals).length)return;
+  const nextWkIdx=p.weeks_data.findIndex(w=>w.week===completedWeekNum+1);
+  if(nextWkIdx<0)return;
+  const nextWeek=p.weeks_data[nextWkIdx];
+  if(!nextWeek||nextWeek.phase==='Retest')return;
+  const m=getMetrics(ath);
+  const actualsText=Object.entries(actuals).map(([k,v])=>k+': '+v).join(', ');
+  const nextExercises=(nextWeek.days||[]).flatMap(d=>(d.sessions||[]).flatMap(s=>s.exercises||[])).slice(0,8).map(e=>e.name+' '+e.sets+'x'+e.reps+' @ '+(e.weight||'?')+' RPE'+(e.rpe||'?')).join(', ');
+  const prompt='ATHLETE: '+an(ath)+', '+ath.sport+', age '+ath.age+'\nVALD: '+JSON.stringify(m)+'\nWEEK '+completedWeekNum+' ACTUALS: '+actualsText+'\nNEXT WEEK '+(completedWeekNum+1)+' PLAN: '+nextExercises+'\nPHASE: '+nextWeek.phase+'\n\nADJUST NEXT WEEK. Rules: RPE actual exceeds planned reduce load 5-10pct. All sets easy increase 3-5pct. Right-side lag add 1 extra set right-lead. Over 3 missed sets no plyometric increase. Sprint reps over 6 cut to 4. Respect phase tempo. No front-loaded squats for Austin.\nReturn ONLY adjusted week JSON. Same schema. Start { end }. No markdown.';
+  const ind=document.createElement('div');
+  ind.id='adjust-indicator';
+  ind.style.cssText='position:fixed;bottom:70px;right:16px;background:var(--bg2);border:1px solid var(--accent);border-radius:20px;padding:6px 14px;font-size:9px;color:var(--accent);letter-spacing:1px;z-index:500;pointer-events:none;';
+  ind.textContent='\u26a0 Brain adjusting wk'+(completedWeekNum+1)+'...';
+  document.body.appendChild(ind);
+  try{
+    const res=await apiFetch({max_tokens:1500,system:'JSON-only week adjuster for FitClub CT. Same schema as input. Start { end }. No markdown.',messages:[{role:'user',content:prompt}]});
+    const d=await res.json();
+    const adjInd=document.getElementById('adjust-indicator');if(adjInd)adjInd.remove();
+    if(d.error)return;
+    const raw=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'';
+    const adjusted=parseJSONLoose(raw)||parseJSONLoose(repairJSON(raw));
+    if(!adjusted||!adjusted.days)return;
+    adjusted.week=completedWeekNum+1;adjusted.phase=nextWeek.phase;
+    adjusted.focus=adjusted.focus||nextWeek.focus;
+    adjusted._autoAdjusted=true;adjusted._brainVersion=BRAIN_VERSION;
+    p.weeks_data[nextWkIdx]=adjusted;p.brainVersion=BRAIN_VERSION;
+    save();
+    if(S.page==='programs')showProgDetail(athId,nextWkIdx);
+    toast('\u26a0 Week '+(completedWeekNum+1)+' auto-adjusted \u2713');
+  }catch(e){const adjInd=document.getElementById('adjust-indicator');if(adjInd)adjInd.remove();}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRO UPGRADE 1 — Full VALD field schema v2.0
+// Replaces the old limited vald object with complete data model
+// ═══════════════════════════════════════════════════════════════
+
+// Override getMetrics to include all v2.0 VALD fields
+const _origGetMetrics = window.getMetrics;
+window.getMetrics = function(a){
+  const v=a.vald||{};
+  return {
+    // Legacy fields (backwards compatible)
+    cmj: v.cmj, rsi: v.dj_rsi||v.rsi, asy: v.sl_jump_asym_pct||v.asy,
+    asys: v.sl_jump_asym_side||v.asys, nf: v.nf, trap: v.trap,
+    spd: v.spd, vj: v.vj, bj: v.bj, bw: v.bw,
+    // NEW v2.0 fields
+    dj_rsi: v.dj_rsi, hop_rsi: v.hop_rsi,
+    sl_hop_l: v.sl_hop_l, sl_hop_r: v.sl_hop_r, sl_hop_asym: v.sl_hop_asym,
+    sl_jump_l: v.sl_jump_l, sl_jump_r: v.sl_jump_r, sl_jump_asym_pct: v.sl_jump_asym_pct,
+    sl_drop_force_r: v.sl_drop_force_r, sl_drop_force_l: v.sl_drop_force_l,
+    cod: v.cod, cmj_wkg: v.cmj_wkg,
+    // Percentiles
+    dj_pct: v.dj_pct, hop_pct: v.hop_pct, cmj_pct: v.cmj_pct,
+    sl_jump_l_pct: v.sl_jump_l_pct, sl_jump_r_pct: v.sl_jump_r_pct,
+    sl_hop_l_pct: v.sl_hop_l_pct, sl_hop_r_pct: v.sl_hop_r_pct,
+    // Trends
+    cmj_trend: v.cmj_trend, hop_trend: v.hop_trend,
+    sprint_trend: v.sprint_trend, cod_trend: v.cod_trend,
+  };
+};
+
+// Override getFlags to use v2.0 data
+const _origGetFlags = window.getFlags;
+window.getFlags = function(a){
+  const f=[];const v=a.vald||{};
+  const asy=parseFloat(v.sl_jump_asym_pct||v.asy||0);
+  if(asy>10)f.push({l:'Asym '+asy+'%',t:'red'});
+  // SL hop asymmetry
+  if(v.sl_hop_l&&v.sl_hop_r){
+    const hopAsym=Math.abs((parseFloat(v.sl_hop_l)-parseFloat(v.sl_hop_r))/Math.max(parseFloat(v.sl_hop_l),parseFloat(v.sl_hop_r))*100);
+    if(hopAsym>10)f.push({l:'SL Hop Asym '+hopAsym.toFixed(1)+'%',t:'orange'});
+  }
+  // DJ vs Hop RSI gap
+  if(v.dj_rsi&&v.hop_rsi&&(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi))>0.5)
+    f.push({l:'DJ/Hop RSI Gap',t:'orange'});
+  // Declining trends
+  if(v.cmj_trend&&parseFloat(v.cmj_trend)<-2)f.push({l:'CMJ \u2193'+Math.abs(v.cmj_trend)+'%',t:'orange'});
+  if(v.sprint_trend&&parseFloat(v.sprint_trend)>1)f.push({l:'Sprint \u2193'+v.sprint_trend+'%',t:'red'});
+  if(a.status==='Injured')f.push({l:'Injured',t:'red'});
+  // Elite flags
+  if(v.hop_rsi&&parseFloat(v.hop_rsi)>=2.0)f.push({l:'Elite Hop RSI',t:'green'});
+  if(v.cmj_wkg&&parseFloat(v.cmj_wkg)>=45)f.push({l:'Elite CMJ Power',t:'green'});
+  return f;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PRO UPGRADE 2 — Enhanced VALD PDF parser
+// Extracts ALL metrics including percentiles and trends
+// ═══════════════════════════════════════════════════════════════
+const VALD_PARSE_PROMPT = `Parse this VALD ForceDecks PDF completely. Extract every number.
+Return ONLY valid JSON — no markdown, no explanation:
+{
+  "first_name": "",
+  "last_name": "",
+  "age": null,
+  "sport": null,
+  "dj_rsi": null,
+  "dj_rsi_asym_pct": null,
+  "dj_pct": null,
+  "dj_trend_pct": null,
+  "hop_rsi": null,
+  "hop_pct": null,
+  "hop_trend_pct": null,
+  "sl_hop_l": null,
+  "sl_hop_r": null,
+  "sl_hop_asym_pct": null,
+  "sl_hop_asym_side": null,
+  "sl_hop_l_pct": null,
+  "sl_hop_r_pct": null,
+  "sl_jump_l_wkg": null,
+  "sl_jump_r_wkg": null,
+  "sl_jump_asym_pct": null,
+  "sl_jump_asym_side": null,
+  "sl_jump_l_pct": null,
+  "sl_jump_r_pct": null,
+  "cmj_wkg": null,
+  "cmj_pct": null,
+  "cmj_trend_pct": null,
+  "sl_drop_force_l": null,
+  "sl_drop_force_r": null,
+  "cod_5_10_5": null,
+  "cod_trend_pct": null,
+  "sprint_10yd": null,
+  "sprint_trend_pct": null,
+  "bw_lbs": null,
+  "nordic_n": null,
+  "trap_lbs": null,
+  "notes_raw": ""
+}
+For trend values: negative = improving for speed/time metrics, positive = improving for power/RSI metrics. Use the actual percentage shown with sign. For asymmetry percentages use positive numbers only.`;
+
+// Override vpdfProcess to use the new comprehensive prompt
+const _origVpdfProcess = window.vpdfProcess;
+window.vpdfProcess = async function(file){
+  if(!_apiKey){toast('Set API key first');return;}
+  const lbl=document.getElementById('vpdf-lbl'),st=document.getElementById('vpdf-status');
+  lbl.textContent='Reading...';st.style.display='block';
+  st.innerHTML='<span style="color:var(--text3);">Parsing with Brain v2.0...</span>';
+  if(file.size>20*1024*1024){st.innerHTML='<span style="color:var(--red);">PDF too large (max 20MB)</span>';return;}
+  try{
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=()=>rej(new Error('Read failed'));r.readAsDataURL(file);});
+    const response=await apiFetch({max_tokens:2000,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:VALD_PARSE_PROMPT}]}]});
+    const d=await response.json();
+    if(d.error){st.innerHTML='<span style="color:var(--red);">'+d.error.message+'</span>';return;}
+    const raw=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'{}';
+    let p=parseJSONLoose(raw);
+    if(!p){st.innerHTML='<span style="color:var(--red);">Could not parse PDF</span>';return;}
+
+    // Find or create athlete
+    const sel=document.getElementById('ve-sel');
+    const existing=S.athletes.find(a=>
+      a.first.toLowerCase()===(p.first_name||'').toLowerCase()&&
+      a.last.toLowerCase()===(p.last_name||'').toLowerCase()
+    );
+    sel.value=existing?existing.id:'_new';
+    veSelChange();
+
+    // Fill standard fields
+    const sv=(id,v)=>{const e=document.getElementById(id);if(e&&v!=null&&v!=='')e.value=v;};
+    if(sel.value==='_new'){sv('ve-first',p.first_name);sv('ve-last',p.last_name);}
+
+    // Fill all available fields
+    sv('ve-cmj',p.cmj_wkg);
+    sv('ve-rsi',p.dj_rsi);
+    sv('ve-asy',p.sl_jump_asym_pct||p.dj_rsi_asym_pct);
+    if(p.sl_jump_asym_side||p.dj_asym_side)
+      document.getElementById('ve-asys').value=p.sl_jump_asym_side||p.dj_asym_side||'';
+    sv('ve-djrsi',p.dj_rsi);
+    sv('ve-hoprsi',p.hop_rsi);
+    sv('ve-slhopl',p.sl_hop_l);
+    sv('ve-slhopr',p.sl_hop_r);
+    sv('ve-sldjl',p.sl_jump_l_wkg);
+    sv('ve-sldjr',p.sl_jump_r_wkg);
+    sv('ve-spd',p.sprint_10yd);
+    sv('ve-cod',p.cod_5_10_5);
+    sv('ve-trap',p.trap_lbs);
+    sv('ve-nf',p.nordic_n);
+    sv('ve-bw',p.bw_lbs);
+    if(p.notes_raw)document.getElementById('ve-note').value=p.notes_raw;
+
+    // Build the full v2.0 extended fields object
+    window._pendingValdExtended = {
+      dj_rsi: p.dj_rsi, hop_rsi: p.hop_rsi,
+      sl_hop_l: p.sl_hop_l, sl_hop_r: p.sl_hop_r,
+      sl_hop_asym: p.sl_hop_asym_pct, sl_hop_asym_side: p.sl_hop_asym_side,
+      sl_jump_l: p.sl_jump_l_wkg, sl_jump_r: p.sl_jump_r_wkg,
+      sl_jump_asym_pct: p.sl_jump_asym_pct, sl_jump_asym_side: p.sl_jump_asym_side,
+      sl_jump_l_pct: p.sl_jump_l_pct, sl_jump_r_pct: p.sl_jump_r_pct,
+      sl_drop_force_l: p.sl_drop_force_l, sl_drop_force_r: p.sl_drop_force_r,
+      cmj_wkg: p.cmj_wkg, cod: p.cod_5_10_5,
+      dj_pct: p.dj_pct, hop_pct: p.hop_pct, cmj_pct: p.cmj_pct,
+      sl_hop_l_pct: p.sl_hop_l_pct, sl_hop_r_pct: p.sl_hop_r_pct,
+      cmj_trend: p.cmj_trend_pct, hop_trend: p.hop_trend_pct,
+      sprint_trend: p.sprint_trend_pct, cod_trend: p.cod_trend_pct,
+    };
+
+    // If athlete already exists, save extended fields NOW directly
+    if(existing){
+      if(!existing.vald)existing.vald={};
+      Object.entries(window._pendingValdExtended).forEach(([k,v])=>{if(v!=null&&v!=='')existing.vald[k]=v;});
+      save();
+    }
+
+    // Build summary card
+    const fields=[
+      p.dj_rsi&&('DJ RSI: '+p.dj_rsi+(p.dj_pct?' ('+p.dj_pct+'th pct)':'')),
+      p.hop_rsi&&('Hop RSI: '+p.hop_rsi+(p.hop_pct?' ('+p.hop_pct+'th pct)':'')),
+      p.cmj_wkg&&('CMJ: '+p.cmj_wkg+'W/kg'+(p.cmj_pct?' ('+p.cmj_pct+'th pct)':'')),
+      p.sl_jump_l_wkg&&('SL Jump L: '+p.sl_jump_l_wkg+'W/kg'),
+      p.sl_jump_r_wkg&&('SL Jump R: '+p.sl_jump_r_wkg+'W/kg'),
+      p.sl_hop_l&&('SL Hop L RSI: '+p.sl_hop_l),
+      p.sl_hop_r&&('SL Hop R RSI: '+p.sl_hop_r),
+      p.sprint_10yd&&('10yd: '+p.sprint_10yd+'s'+(p.sprint_trend_pct?' ('+p.sprint_trend_pct+'% trend)':'')),
+      p.cod_5_10_5&&('5-10-5: '+p.cod_5_10_5+'s'),
+    ].filter(Boolean);
+
+    // Auto-flag key insights
+    const flags=[];
+    if(p.hop_rsi&&p.dj_rsi&&(parseFloat(p.hop_rsi)-parseFloat(p.dj_rsi))>0.5)
+      flags.push('\u26a0\ufe0f DJ RSI much lower than Hop RSI — tendon stiffness deficit under load');
+    if(p.cmj_trend_pct&&parseFloat(p.cmj_trend_pct)<-2)
+      flags.push('\u26a0\ufe0f CMJ declining '+Math.abs(p.cmj_trend_pct)+'% — bilateral force loss');
+    if(p.sprint_trend_pct&&parseFloat(p.sprint_trend_pct)>1)
+      flags.push('\u26a0\ufe0f Sprint slowing '+p.sprint_trend_pct+'% — linear speed priority');
+    if(p.sl_jump_asym_pct&&parseFloat(p.sl_jump_asym_pct)>10)
+      flags.push('\u26a0\ufe0f SL Jump Asym '+p.sl_jump_asym_pct+'% — unilateral deficit');
+
+    st.innerHTML='<div style="color:var(--accent);margin-bottom:8px;">\u2713 '+(p.first_name||'')+' '+(p.last_name||'')+' — '+fields.length+' metrics extracted</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">'+fields.map(f=>'<span style="background:var(--bg4);border:1px solid var(--border2);padding:2px 7px;border-radius:3px;font-size:9px;">'+f+'</span>').join('')+'</div>'
+      +(flags.length?'<div style="margin-top:6px;">'+flags.map(f=>'<div style="color:var(--orange);font-size:9px;margin-bottom:3px;">'+f+'</div>').join('')+'</div>':'')
+      +'<div style="color:var(--text3);font-size:9px;margin-top:6px;">Review fields below \u2192 tap Save</div>';
+    lbl.textContent='Done';toast('Extracted '+fields.length+' metrics');
+  }catch(e){st.innerHTML='<span style="color:var(--red);">'+e.message+'</span>';}
+};
+
+// Override saveValdEntry to persist extended fields
+const _origSaveValdEntry = window.saveValdEntry;
+window.saveValdEntry = function(){
+  // Capture dropdown value BEFORE calling original (which resets the form)
+  const sel=document.getElementById('ve-sel');
+  const selVal=sel&&sel.value;
+  const firstName=(document.getElementById('ve-first')&&document.getElementById('ve-first').value||'').trim();
+  const lastName=(document.getElementById('ve-last')&&document.getElementById('ve-last').value||'').trim();
+  const extended=window._pendingValdExtended?{...window._pendingValdExtended}:null;
+  window._pendingValdExtended=null;
+
+  // Run original save
+  _origSaveValdEntry.apply(this, arguments);
+
+  // Merge extended fields after original save settles
+  if(extended){
+    setTimeout(()=>{
+      let ath=null;
+      if(selVal&&selVal!=='_new'){
+        ath=S.athletes.find(a=>a.id===selVal);
+      }
+      if(!ath&&firstName&&lastName){
+        ath=S.athletes.find(a=>
+          a.first.toLowerCase()===firstName.toLowerCase()&&
+          a.last.toLowerCase()===lastName.toLowerCase()
+        );
+      }
+      if(ath){
+        if(!ath.vald)ath.vald={};
+        Object.entries(extended).forEach(([k,v])=>{if(v!=null&&v!=='')ath.vald[k]=v;});
+        save();
+        toast('VALD Pro fields saved \u2713');
+        // Refresh athlete detail if it's open
+        if(S.selAth===ath.id)showAthDetail(ath.id);
+      }
+    },300);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PRO UPGRADE 3 — Enhanced athlete detail with percentile badges
+// and trend indicators in the metrics display
+// ═══════════════════════════════════════════════════════════════
+const _origShowAthDetail = window.showAthDetail;
+window.showAthDetail = function(id){
+  _origShowAthDetail.apply(this, arguments);
+  // After original renders, inject the pro metrics panel
+  setTimeout(()=>{
+    const ath=S.athletes.find(a=>a.id===id);
+    if(!ath||!ath.vald)return;
+    const v=ath.vald;
+    const detail=document.getElementById('ath-detail');
+    if(!detail)return;
+
+    // Remove any existing pro card first (prevent duplicates on re-render)
+    const existing=detail.querySelector('.vald-pro-card');
+    if(existing)existing.remove();
+
+    // Build pro metrics grid if we have v2.0 data
+    const hasProData=v.dj_rsi||v.hop_rsi||v.sl_hop_l||v.sl_jump_l||v.cmj_wkg||v.cod;
+    if(!hasProData)return;
+
+    const pctBadge=(pct)=>{
+      if(!pct)return'';
+      const p=parseInt(pct);
+      const c=p>=90?'var(--accent)':p>=75?'var(--blue)':p>=50?'#fbbf24':'var(--orange)';
+      return`<span style="font-size:7px;padding:1px 5px;border-radius:3px;background:${c}22;color:${c};border:1px solid ${c}44;margin-left:4px;">${p}th</span>`;
+    };
+    const trendBadge=(t,invertGood)=>{
+      if(t==null||t==='')return'';
+      const n=parseFloat(t);
+      const good=invertGood?(n<0):(n>0);
+      const c=good?'var(--accent)':'var(--red)';
+      const arrow=good?'\u2191':'\u2193';
+      return`<span style="font-size:8px;color:${c};margin-left:4px;">${arrow}${Math.abs(n)}%</span>`;
+    };
+
+    const rows=[
+      v.dj_rsi&&{l:'DJ RSI',v:v.dj_rsi,pct:v.dj_pct,trend:v.dj_trend,unit:'m/s',invertGood:false},
+      v.hop_rsi&&{l:'Hop RSI',v:v.hop_rsi,pct:v.hop_pct,trend:v.hop_trend,unit:'',invertGood:false},
+      v.cmj_wkg&&{l:'CMJ Power',v:v.cmj_wkg,pct:v.cmj_pct,trend:v.cmj_trend,unit:'W/kg',invertGood:false},
+      (v.sl_jump_l||v.sl_jump_r)&&{l:'SL Jump L\u2009/\u2009R',v:(v.sl_jump_l||'\u2013')+'\u2009/\u2009'+(v.sl_jump_r||'\u2013'),unit:'W/kg',pct:null,trend:null},
+      (v.sl_hop_l||v.sl_hop_r)&&{l:'SL Hop L\u2009/\u2009R',v:(v.sl_hop_l||'\u2013')+'\u2009/\u2009'+(v.sl_hop_r||'\u2013'),unit:'',pct:null,trend:null},
+      v.cod&&{l:'5-10-5 COD',v:v.cod,pct:null,trend:v.cod_trend,unit:'s',invertGood:true},
+      v.sl_drop_force_r&&{l:'Drop Force R',v:v.sl_drop_force_r,pct:null,trend:null,unit:'N'},
+    ].filter(Boolean);
+
+    if(!rows.length)return;
+
+    // DJ vs Hop RSI gap insight
+    let gapInsight='';
+    if(v.dj_rsi&&v.hop_rsi&&(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi))>0.5){
+      gapInsight='<div style="background:rgba(255,140,66,.08);border:1px solid rgba(255,140,66,.3);border-radius:var(--r);padding:7px 10px;margin-top:8px;font-size:9px;color:var(--orange);">'
+        +'\u26a0\ufe0f DJ RSI ('+v.dj_rsi+') vs Hop RSI ('+v.hop_rsi+') — '+(parseFloat(v.hop_rsi)-parseFloat(v.dj_rsi)).toFixed(2)+' gap. Natera: tendon stiffness deficit under drop load. Prioritize DJ-specific isometric loading.'
+        +'</div>';
+    }
+
+    const proCard=document.createElement('div');
+    proCard.className='card vald-pro-card';
+    proCard.style.cssText='border-color:rgba(184,255,87,.2);';
+    proCard.innerHTML='<div class="card-title" style="justify-content:space-between;"><span>VALD Pro Metrics</span><span style="color:var(--accent);font-size:8px;letter-spacing:1px;">BRAIN v2.0</span></div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+      +rows.map(r=>'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:9px 11px;">'
+        +'<div style="font-size:8px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">'+r.l+'</div>'
+        +'<div style="font-family:var(--disp);font-size:18px;color:var(--accent);">'+r.v
+        +(r.unit?'<span style="font-size:9px;color:var(--text3);"> '+r.unit+'</span>':'')
+        +pctBadge(r.pct)
+        +(r.trend!=null?trendBadge(r.trend,r.invertGood):'')
+        +'</div></div>').join('')
+      +'</div>'
+      +gapInsight;
+
+    // Insert right after the athlete header card (first child)
+    const firstCard=detail.querySelector('.card');
+    if(firstCard){
+      firstCard.insertAdjacentElement('afterend',proCard);
+    }else{
+      detail.insertBefore(proCard,detail.firstChild);
+    }
+  },150);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GENPROGRAM, SENDBRAIN, RUNSENTINEL overrides (same as v1)
+// ═══════════════════════════════════════════════════════════════
+const _origGenProgram = window.genProgram;
+window.genProgram = async function(){
+  const athId=document.getElementById('prog-ath').value;
+  if(!athId){toast('Select athlete');return;}
+  const ath=S.athletes.find(a=>a.id===athId);
+  if(ath){
+    const warnings=validateAthData(ath);
+    const existingBanner=document.getElementById('prog-warn-banner');
+    if(existingBanner)existingBanner.remove();
+    if(warnings.length){
+      const banner=document.createElement('div');
+      banner.id='prog-warn-banner';
+      banner.style.cssText='background:rgba(255,140,66,.08);border:1px solid rgba(255,140,66,.35);border-radius:3px;padding:10px 14px;margin-bottom:12px;font-size:10px;line-height:1.9;color:#ff8c42;';
+      banner.innerHTML='<div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;opacity:.7;">\u26a0 Brain Pre-Check v2.0</div>'+warnings.join('<br>');
+      const det=document.getElementById('prog-detail');
+      if(det){det.innerHTML='';det.appendChild(banner);}
+    }
+    if(!S.programs[athId])S.programs[athId]={};
+    S.programs[athId].brainVersion=BRAIN_VERSION;
+  }
+  return _origGenProgram.apply(this, arguments);
+};
+
+const _origBuildWeekPrompt = window.buildWeekPrompt;
+window.buildWeekPrompt = function(wk,totalWeeks,ath,opts,prevWeekData,actuals){
+  const brainCtx=getContextualBrain('program '+opts.goal+' '+ath.sport+' strength speed block');
+  if(_origBuildWeekPrompt){
+    const result=_origBuildWeekPrompt.apply(this, arguments);
+    const origBible=window.COACHING_BIBLE||'';
+    if(result&&origBible)return result.replace(origBible,brainCtx);
+    return brainCtx+'\n\n'+(result||'');
+  }
+  return brainCtx;
+};
+
+window.sendBrain = async function(){
+  const inp=document.getElementById('ai-input');
+  if(!inp)return;
+  const msg=inp.value.trim();if(!msg)return;
+  inp.value='';
+  addAIMsg('user',msg);
+  if(typeof _aiHist!=='undefined')_aiHist.push({role:'user',content:msg});
+  const t=addAIMsg('brain','...');
+  if(!_apiKey){t.remove();addAIMsg('brain','Set your API key first.');return;}
+  try{
+    const _brainCtx=getContextualBrain(msg);
+    const sys=_brainCtx+'\n\nROSTER ('+S.athletes.length+'):\n'
+      +S.athletes.slice(0,12).map(a=>{
+        const v=a.vald||{};
+        return an(a)+' ('+a.sport+' '+a.position+', age '+a.age+')'
+          +' DJ-RSI:'+(v.dj_rsi||v.rsi||'-')
+          +' Hop-RSI:'+(v.hop_rsi||'-')
+          +' CMJ:'+(v.cmj_wkg||v.cmj||'-')+'W/kg'
+          +' Asym:'+(v.sl_jump_asym_pct||v.asy||'-')+'%'
+          +' Speed:'+(v.spd||'-')+'s';
+      }).join('\n');
+    const msgs=typeof _aiHist!=='undefined'?[..._aiHist]:[];
+    const res=await apiFetch({max_tokens:1000,system:sys,messages:msgs});
+    const d=await res.json();
+    if(d.error){t.remove();addAIMsg('brain','Error: '+d.error.message);return;}
+    const text=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'No response.';
+    t.remove();addAIMsg('brain',text);
+    if(typeof _aiHist!=='undefined'){_aiHist.push({role:'assistant',content:text});if(_aiHist.length>20)_aiHist=_aiHist.slice(-20);}
+  }catch(e){t.remove();addAIMsg('brain','Network error: '+e.message);}
+};
+
+const _origRunSentinelChecks=window.runSentinelChecks;
+window.runSentinelChecks=async function(){
+  const checks=_origRunSentinelChecks?await _origRunSentinelChecks():[];
+  const brainOk=typeof SUPER_TRAINER_BRAIN!=='undefined';
+  const valdV2=S.athletes.some(a=>a.vald&&(a.vald.dj_rsi||a.vald.hop_rsi));
+  checks.splice(1,0,{n:'Super Trainer Brain',ok:brainOk,info:brainOk?'Loaded \u2014 Brain '+BRAIN_VERSION+' (6 coaches)':'MISSING'});
+  checks.splice(2,0,{n:'VALD v2.0 Schema',ok:true,info:valdV2?'Extended fields active on '+S.athletes.filter(a=>a.vald&&(a.vald.dj_rsi||a.vald.hop_rsi)).length+' athletes':'Ready \u2014 import VALD PDF to activate'});
+  return checks;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MIGRATION — Parse existing session notes to extract v2.0 fields
+// Runs once on load for athletes who already have VALD session notes
+// but don't yet have the extended vald fields saved
+// ═══════════════════════════════════════════════════════════════
+function migrateValdFromSessionNotes(){
+  let migrated=0;
+  S.athletes.forEach(ath=>{
+    if(!ath.vald)ath.vald={};
+    // Already has v2.0 data — skip
+    if(ath.vald.dj_rsi||ath.vald.hop_rsi)return;
+    // Look through sessions for VALD note text
+    const sessions=(S.sessions[ath.id]||[]);
+    sessions.forEach(sess=>{
+      const n=sess.notes||'';
+      if(!n.includes('Drop Jump')&&!n.includes('RSI')&&!n.includes('Hop Test'))return;
+      // Parse key values from the note text
+      const extract=(pattern)=>{const m=n.match(pattern);return m?parseFloat(m[1]):null;};
+      const dj=extract(/Drop Jump[^:]*RSI[^:]*?:\s*([\d.]+)/i)||extract(/Drop Jump.*?([\d.]+)\s*m\/s/i);
+      const hop=extract(/Hop Test[^.]*?([\d.]+)/i)||extract(/Mean RSI.*?([\d.]+)/i);
+      const slHopL=extract(/SL Hop.*?Left.*?([\d.]+)/i)||extract(/Left\s+([\d.]+)\s*\(/i);
+      const slHopR=extract(/SL Hop.*?Right.*?([\d.]+)/i)||extract(/Right\s+([\d.]+)\s*\(/i);
+      const slJumpL=extract(/Single Leg Jump.*?Left\s+([\d.]+)\s*W/i);
+      const slJumpR=extract(/Single Leg Jump.*?Right\s+([\d.]+)\s*W/i)||extract(/Right\s+([\d.]+)\s*W\/kg/i);
+      const cmjW=extract(/Countermovement Jump.*?([\d.]+)\s*W\/kg/i);
+      const cod=extract(/5-10-5[^:]*?(\d\.\d+)\s*s/i)||extract(/Pro Agility.*?(\d\.\d+)\s*s/i);
+      const spd=extract(/10yd Sprint.*?(\d\.\d+)\s*s/i);
+      const djPct=extract(/Drop Jump.*?(\d+)(?:st|nd|rd|th)\s*pct/i)||extract(/(\d+)th pct/i);
+      const hopPct=extract(/Hop Test.*?(\d+)(?:st|nd|rd|th)\s*pct/i);
+      const cmjPct=extract(/Countermovement.*?(\d+)(?:st|nd|rd|th)\s*pct/i);
+      const dropForceR=extract(/Drop Landing Force.*?Right.*?(\d+)\s*N/i)||extract(/(\d+)\s*N.*Single Leg/i);
+      const slHopAsym=extract(/SL Hop.*?Asym[^%]*([\d.]+)%/i)||extract(/Asym[^%]*([\d.]+)%.*Left/i);
+      const cmjTrend=extract(/CMJ.*?(?:up|down)\s*([\d.]+)%/i);
+      const sprintTrend=extract(/10yd Sprint.*?(?:up|down)\s*([\d.]+)%/i);
+      const codTrend=extract(/5-10-5.*?(?:up|down)\s*([\d.]+)%/i);
+
+      const fields={dj_rsi:dj,hop_rsi:hop,sl_hop_l:slHopL,sl_hop_r:slHopR,
+        sl_jump_l:slJumpL,sl_jump_r:slJumpR,cmj_wkg:cmjW,cod,
+        dj_pct:djPct,hop_pct:hopPct,cmj_pct:cmjPct,
+        sl_drop_force_r:dropForceR,sl_hop_asym:slHopAsym,
+        cmj_trend:cmjTrend,sprint_trend:sprintTrend,cod_trend:codTrend};
+
+      let anyMerged=false;
+      Object.entries(fields).forEach(([k,v])=>{
+        if(v!=null&&!ath.vald[k]){ath.vald[k]=v;anyMerged=true;}
+      });
+      if(anyMerged)migrated++;
+    });
+  });
+  if(migrated>0){save();console.log('[Brain v2.0] Migrated VALD data for '+migrated+' athletes from session notes');}
+}
+
+// Run migration after a short delay to let app finish loading
+setTimeout(migrateValdFromSessionNotes, 2000);
+
+console.log('[FitClub CT] Super Trainer Brain '+BRAIN_VERSION+' loaded \u2014 6 coaches + VALD Pro Schema + Migration');
