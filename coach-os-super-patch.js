@@ -220,6 +220,82 @@ function showMetricHistory(athId,metric){
     +snaps.map(s=>'<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px solid var(--border);"><span class="muted">'+s.date+'</span><span>'+s.value+'</span></div>').join('');
 }
 
+// ═══════════════════════ SECTION 9 — POWER \u00D7 SPEED PROFILE MAP ═══════
+// CMJ (power) plotted against 10yd sprint (speed) for every athlete with
+// both metrics on file. Top-right quadrant = above-average power AND
+// above-average speed. Dashed lines = team average on each axis. Lets you
+// see the power-to-speed relationship at a glance instead of eyeballing
+// two separate lists.
+
+function _computePowerSpeedMapData(){
+  return S.athletes.map(function(a){
+    var m=getMetrics(a);
+    var cmj=parseFloat(m.cmj), spd=parseFloat(m.spd);
+    if(isNaN(cmj)||isNaN(spd))return null;
+    return{name:an(a),id:a.id,cmj:cmj,spd:spd};
+  }).filter(Boolean);
+}
+
+function renderPowerSpeedMap(){
+  var body=document.getElementById('psmap-body'); if(!body)return;
+  var data=_computePowerSpeedMapData();
+  if(data.length<2){body.innerHTML='<div class="muted">Need at least 2 athletes with both CMJ and 10yd sprint on file.</div>';return;}
+
+  var W=340,H=280,pl=40,pr=14,pt=18,pb=34,x0=pl,x1=W-pr,y0=H-pb,y1=pt;
+  var cmjVals=data.map(function(d){return d.cmj;}), spdVals=data.map(function(d){return d.spd;});
+  var cmjMin=Math.min.apply(0,cmjVals),cmjMax=Math.max.apply(0,cmjVals);
+  var spdMin=Math.min.apply(0,spdVals),spdMax=Math.max.apply(0,spdVals);
+  var cmjPad=(cmjMax-cmjMin||1)*0.18, spdPad=(spdMax-spdMin||1)*0.18;
+  cmjMin-=cmjPad;cmjMax+=cmjPad;spdMin-=spdPad;spdMax+=spdPad;
+
+  function X(cmj){return x0+(cmj-cmjMin)/(cmjMax-cmjMin)*(x1-x0);}
+  // Sprint time: LOWER is faster, so faster athletes plot HIGHER on the chart (toward y1)
+  function Y(spd){return y0-(spdMax-spd)/(spdMax-spdMin)*(y0-y1);}
+
+  var cmjAvg=cmjVals.reduce(function(a,b){return a+b;},0)/cmjVals.length;
+  var spdAvg=spdVals.reduce(function(a,b){return a+b;},0)/spdVals.length;
+
+  var NS='http://www.w3.org/2000/svg';
+  function E(t,attrs,txt){var e=document.createElementNS(NS,t);for(var k in attrs)e.setAttribute(k,attrs[k]);if(txt!=null)e.textContent=txt;return e;}
+  var cv=function(n){return getComputedStyle(document.body).getPropertyValue(n).trim()||'#00e5a0';};
+
+  body.innerHTML='';
+  var svg=E('svg',{viewBox:'0 0 '+W+' '+H,style:'width:100%;height:auto;display:block;'});
+
+  svg.appendChild(E('line',{x1:x0,y1:y0,x2:x1,y2:y0,stroke:cv('--border2')}));
+  svg.appendChild(E('line',{x1:x0,y1:y1,x2:x0,y2:y0,stroke:cv('--border2')}));
+  svg.appendChild(E('line',{x1:X(cmjAvg),y1:y1,x2:X(cmjAvg),y2:y0,stroke:cv('--text3'),'stroke-dasharray':'2 3'}));
+  svg.appendChild(E('line',{x1:x0,y1:Y(spdAvg),x2:x1,y2:Y(spdAvg),stroke:cv('--text3'),'stroke-dasharray':'2 3'}));
+
+  svg.appendChild(E('text',{x:x1-3,y:y1+10,'text-anchor':'end','font-size':7,fill:cv('--accent')},'POWER + SPEED'));
+  svg.appendChild(E('text',{x:x0+3,y:y0-4,'text-anchor':'start','font-size':7,fill:cv('--text3')},'DEVELOP BOTH'));
+  svg.appendChild(E('text',{x:(x0+x1)/2,y:H-6,'text-anchor':'middle','font-size':8,fill:cv('--text2')},'CMJ (power) \u2192'));
+  svg.appendChild(E('text',{x:12,y:(y0+y1)/2,'text-anchor':'middle','font-size':8,fill:cv('--text2'),transform:'rotate(-90 12 '+((y0+y1)/2)+')'},'FASTER \u2192'));
+
+  data.forEach(function(d){
+    var cx=X(d.cmj), cy=Y(d.spd);
+    var eliteQuad=d.cmj>=cmjAvg&&d.spd<=spdAvg;
+    svg.appendChild(E('circle',{cx:cx,cy:cy,r:5,fill:eliteQuad?cv('--accent'):cv('--blue'),stroke:cv('--bg'),'stroke-width':1,opacity:.9}));
+    svg.appendChild(E('text',{x:cx,y:cy-8,'text-anchor':'middle','font-size':6.5,fill:cv('--text2')},d.name.split(' ')[0]));
+  });
+
+  body.appendChild(svg);
+  var note=document.createElement('div');
+  note.className='muted'; note.style.marginTop='6px';
+  note.textContent='Top-right = above-average CMJ AND faster sprint. Dashed lines = team average. '+data.length+' athletes plotted (need both CMJ + 10yd on file to appear).';
+  body.appendChild(note);
+}
+
+function _ensurePowerSpeedMapCard(){
+  if(document.getElementById('psmap-card'))return;
+  var anchor=document.getElementById('sprint-avgs')&&document.getElementById('sprint-avgs').closest('.card');
+  if(!anchor||!anchor.parentElement)return;
+  var card=document.createElement('div');
+  card.className='card'; card.id='psmap-card';
+  card.innerHTML='<div class="card-title">\ud83c\udfaf Power \u00d7 Speed Map</div><div id="psmap-body"></div>';
+  anchor.parentElement.insertBefore(card,anchor);
+}
+
 function _ensureMetricExplorerCard(){
   if(document.getElementById('metric-explorer-card'))return;
   const anchor=document.getElementById('sprint-avgs')&&document.getElementById('sprint-avgs').closest('.card');
@@ -908,7 +984,7 @@ window.runSentinelChecks=async function(){
 const _origInitSprint=window.initSprint;
 window.initSprint=function(){
   _origInitSprint.apply(this,arguments);
-  try{_renderOhmQuickLogSprintTab();_ensureMetricExplorerCard();renderMetricExplorer();}catch(e){console.warn('sprint tab additions failed',e);}
+  try{_renderOhmQuickLogSprintTab();_ensureMetricExplorerCard();renderMetricExplorer();_ensurePowerSpeedMapCard();renderPowerSpeedMap();}catch(e){console.warn('sprint tab additions failed',e);}
 };
 
 const _origShowAthDetail=window.showAthDetail;
