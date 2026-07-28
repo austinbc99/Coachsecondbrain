@@ -29,7 +29,7 @@
 if(window.__pbDropinLoaded){console.warn('program-builder-dropin already loaded');return;}
 window.__pbDropinLoaded=true;
 
-const PB={ver:'1.0'};
+const PB={ver:'1.1'};
 window.PB=PB;
 
 /* ═══════════════ SECTION 1 — CHECK-OFF ══════════════════════════════════
@@ -476,6 +476,9 @@ PB.decorate=function(athId,forceWkIdx){
       '<button onclick="PB.runScreen(\''+athId+'\')" style="padding:5px 10px;font-size:9px;'
       +'border-radius:var(--r);border:1px solid var(--orange);background:var(--bg3);'
       +'color:var(--orange);cursor:pointer;">🛡 Screen Injuries</button>'
+      +'<button onclick="PB.openToday(\''+athId+'\')" style="padding:5px 10px;font-size:9px;'
+      +'border-radius:var(--r);border:1px solid var(--accent);background:var(--bg3);'
+      +'color:var(--accent);cursor:pointer;">▶ Today</button>'
       +'<button onclick="PB.printProgram(\''+athId+'\')" style="padding:5px 10px;font-size:9px;'
       +'border-radius:var(--r);border:1px solid var(--border2);background:var(--bg3);'
       +'color:var(--text2);cursor:pointer;">🖨 Print / PDF</button>';
@@ -526,6 +529,185 @@ PB.decorate=function(athId,forceWkIdx){
     }
   }));
 };
+
+/* ═══════════════ SECTION 8 — TODAY VIEW (G3) ════════════════════════════
+   The session in front of you, not the whole block. Full-screen overlay,
+   big tap targets, inline actual entry. Coach-side / tablet-at-the-rack —
+   no athlete login, per scope.
+
+   Day matching: weeks_data days carry names like "Monday". We match the
+   real weekday name; if today isn't a training day we show the next one
+   forward rather than an empty screen. */
+
+PB.DAYNAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+PB.findToday=function(p){
+  const wk=p.weeks_data&&p.weeks_data[(p.currentWeek||1)-1];
+  if(!wk)return null;
+  const want=PB.DAYNAMES[new Date().getDay()];
+  let di=(wk.days||[]).findIndex(d=>(d.day||'').toLowerCase().startsWith(want.toLowerCase().slice(0,3)));
+  let exact=di>=0;
+  if(di<0){
+    // no session today — surface the next training day in the week
+    const order=PB.DAYNAMES.map(n=>n.toLowerCase().slice(0,3));
+    const todayIdx=new Date().getDay();
+    for(let step=1;step<=7&&di<0;step++){
+      const t=order[(todayIdx+step)%7];
+      di=(wk.days||[]).findIndex(d=>(d.day||'').toLowerCase().startsWith(t));
+    }
+  }
+  if(di<0)return null;
+  return {wk,wkIdx:(p.currentWeek||1)-1,day:wk.days[di],dayIdx:di,exact};
+};
+
+PB.openToday=function(athId){
+  const p=S.programs[athId]; if(!p){toast('No program');return;}
+  const t=PB.findToday(p);
+  if(!t){toast('No training days found in current week');return;}
+  const ath=S.athletes.find(a=>a.id===athId);
+
+  const body=(t.day.sessions||[]).map((s,si)=>{
+    const rows=(s.exercises||[]).map((ex,ei)=>{
+      const key=pbKey(t.day.day,s.type,ei);
+      const done=PB.isDone(athId,t.wk.week,key);
+      const act=((p.actuals||{})['wk'+t.wk.week]||{})[key]||'';
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:11px 0;'
+        +'border-bottom:1px solid var(--border);opacity:'+(done?'.55':'1')+';">'
+        +'<span onclick="PB.toggleDone(\''+athId+'\','+t.wk.week+',\''+key+'\','+t.wkIdx+');PB.openToday(\''+athId+'\')" '
+        +'style="cursor:pointer;font-size:26px;line-height:1;user-select:none;'
+        +'color:'+(done?'var(--accent)':'var(--text3)')+';">'+(done?'☑':'☐')+'</span>'
+        +'<div style="flex:1;min-width:0;">'
+          +'<div style="font-size:13px;font-weight:600;">'+(ex.name||'')+'</div>'
+          +'<div style="font-size:11px;color:var(--text2);font-family:var(--mono);padding-top:2px;">'
+            +[ex.sets&&ex.sets+' x '+(ex.reps||''),ex.weight,ex.tempo,ex.rpe&&'RPE '+ex.rpe]
+              .filter(Boolean).join('  ·  ')+'</div>'
+          +(ex.why?'<div style="font-size:9px;color:var(--text3);font-style:italic;padding-top:3px;">'+ex.why+'</div>':'')
+          +(ex.cue?'<div style="font-size:9px;color:var(--text3);padding-top:2px;">'+ex.cue+'</div>':'')
+          +'<input id="pbt-'+si+'-'+ei+'" value="'+String(act).replace(/"/g,'&quot;')+'" '
+            +'placeholder="actual — e.g. 185lbs x5 RPE7" '
+            +'onchange="PB.logFromToday(\''+athId+'\','+t.wk.week+',\''+key+'\',this.value)" '
+            +'style="width:100%;margin-top:6px;padding:7px 9px;font-size:12px;'
+            +'background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);'
+            +'color:var(--text);font-family:var(--mono);">'
+        +'</div></div>';
+    }).join('');
+    return '<div style="padding-top:14px;">'
+      +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">'+s.type+'</div>'
+      +(s.warmup?'<div style="font-size:10px;color:var(--text2);font-style:italic;padding:4px 0;">Warm-up: '+s.warmup+'</div>':'')
+      +rows+'</div>';
+  }).join('');
+
+  let ov=document.getElementById('pb-today');
+  if(!ov){ov=document.createElement('div');ov.id='pb-today';document.body.appendChild(ov);}
+  ov.style.cssText='position:fixed;inset:0;z-index:9999;background:var(--bg);overflow-y:auto;'
+    +'-webkit-overflow-scrolling:touch;padding:16px 14px 40px;';
+  ov.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;'
+    +'position:sticky;top:-16px;background:var(--bg);padding:8px 0 10px;margin:-8px 0 0;">'
+      +'<div><div style="font-size:15px;font-weight:700;">'+(ath?an(ath):'')+'</div>'
+      +'<div style="font-size:10px;color:var(--text2);">'+t.day.day+' · Week '+t.wk.week
+      +' · '+(t.wk.phase||'')+(t.exact?'':' <span style="color:var(--orange);">(next session — nothing scheduled today)</span>')+'</div></div>'
+      +'<span onclick="document.getElementById(\'pb-today\').remove()" '
+      +'style="cursor:pointer;font-size:24px;color:var(--text3);padding:0 4px;">×</span>'
+    +'</div>'+body;
+};
+
+PB.logFromToday=function(athId,wkNum,key,val){
+  if(typeof logWeekActuals==='function'){
+    logWeekActuals(athId,wkNum,key,val);   // keeps auto-adjust + loadHistory intact
+  }else{
+    const p=S.programs[athId];
+    if(!p.actuals)p.actuals={};
+    if(!p.actuals['wk'+wkNum])p.actuals['wk'+wkNum]={};
+    p.actuals['wk'+wkNum][key]=val; save();
+  }
+};
+
+/* ═══════════════ SECTION 9 — POSITION-AWARE CONDITIONING (G7) ═══════════
+   ath.position already exists on the athlete record (ma-pos / ve-pos) and
+   has never been used in generation. This injects a real needs analysis so
+   a field hockey midfielder and a goalkeeper stop getting the same
+   conditioning. Wraps buildWeekPrompt — the super-patch version runs first,
+   this appends. */
+
+PB.NEEDS={
+  'field hockey':{
+    _default:'70-min intermittent game, high aerobic base with repeated-sprint overlay. Aerobic capacity before lactic work.',
+    midfield:'Highest running volume on the field (6-8km). Prioritise aerobic capacity and repeat-sprint ability; long tempo runs and 15-30s efforts at 1:2 rest.',
+    defender:'Moderate volume, high decel and reposition load. Emphasise eccentric/decel capacity and short reactive efforts, 1:3 rest.',
+    forward:'Repeated maximal sprints off short rest. Alactic-capacity focus: 6-10s max efforts, 1:6 rest, full quality.',
+    goalkeeper:'Almost purely alactic and reactive. Short lateral bursts under 5s, long rest, high CNS quality. No lactic conditioning.'
+  },
+  lacrosse:{
+    _default:'Intermittent field sport, repeated sprint with substitution windows.',
+    midfield:'Two-way running load, longest shifts. Aerobic base plus repeat-sprint; 1:2 to 1:3 rest.',
+    attack:'Repeated max sprint with longer natural rest. Alactic power, 1:5 rest, quality over volume.',
+    defense:'Decel, backpedal and reposition dominant. Eccentric capacity and multidirectional work.',
+    goalie:'Reactive, alactic, very short bursts. Long rest, no glycolytic work.'
+  },
+  soccer:{
+    _default:'90-min intermittent, high aerobic demand with repeated high-speed runs.',
+    'center mid':'Highest total distance (10-12km). Aerobic capacity is the limiter; tempo and extensive intervals.',
+    'full back':'Highest high-speed running load. Repeat-sprint ability plus hamstring eccentric capacity.',
+    'center back':'Fewer but maximal accelerations and aerial work. Alactic power and decel.',
+    forward:'Repeated max sprint, 1:6 rest, full quality.',
+    keeper:'Alactic reactive only. No lactic conditioning.'
+  },
+  basketball:{
+    _default:'Repeated short sprint with very high decel and jump volume.',
+    guard:'Highest change-of-direction volume. Repeat-sprint and decel capacity.',
+    wing:'Mixed sprint and jump load.',
+    big:'Jump and contact dominant. Alactic power, manage landing volume.'
+  },
+  hockey:{
+    _default:'Shift-based, 40-60s efforts at 1:3 to 1:4 rest. Glycolytic power with strong aerobic recovery.',
+    forward:'Short high-intensity shifts. Alactic-to-glycolytic, 1:3 rest.',
+    defense:'Longer shifts, more total ice time. Greater aerobic recovery emphasis.',
+    goalie:'Alactic and reactive, deep hip positions. No lactic conditioning.'
+  },
+  volleyball:{_default:'Alactic, jump-dominant, 5-8s rallies. Manage landing volume; long rest.'},
+  baseball:{_default:'Alactic and rotational. Short max efforts, full recovery. No lactic conditioning.'},
+  softball:{_default:'Alactic and rotational. Short max efforts, full recovery. No lactic conditioning.'},
+  football:{_default:'Alactic, 5-7s plays at 1:5 to 1:8 rest. Position-dependent volume.'}
+};
+
+PB.needsFor=function(ath){
+  if(!ath)return null;
+  const sp=(ath.sport||'').toLowerCase().trim();
+  const key=Object.keys(PB.NEEDS).find(k=>sp.includes(k));
+  if(!key)return null;
+  const grp=PB.NEEDS[key];
+  const pos=(ath.position||'').toLowerCase().trim();
+  let posNote=null,posName=null;
+  if(pos){
+    const pk=Object.keys(grp).find(k=>k!=='_default'&&(pos.includes(k)||k.includes(pos)));
+    if(pk){posNote=grp[pk];posName=pk;}
+  }
+  return {sport:key,general:grp._default,position:posName,note:posNote};
+};
+
+if(typeof buildWeekPrompt==='function'){
+  const _pbPrevBWP=buildWeekPrompt;
+  window.buildWeekPrompt=function(wk,totalWeeks,ath,opts,prevWeekData,actuals){
+    let base=_pbPrevBWP.apply(this,arguments);
+    const n=PB.needsFor(ath);
+    if(n){
+      base+='\n\nCONDITIONING NEEDS ANALYSIS ('+n.sport
+        +(n.position?' / '+n.position:'')+'):\n'+n.general
+        +(n.note?'\nPOSITION-SPECIFIC: '+n.note:'')
+        +'\nBuild conditioning from this analysis, not from a generic template. '
+        +'Aerobic development precedes lactic work. If the position note says no lactic '
+        +'conditioning, do not program glycolytic intervals.';
+    }
+    const cons=PB.activeConstraints(ath).map(c=>c.region);
+    if(cons.length){
+      base+='\n\nHARD INJURY CONSTRAINTS (must not be violated in ANY block, including '
+        +'warm-up and plyometrics): '+cons.join(', ')
+        +'. Output will be screened and non-compliant exercises substituted automatically.';
+    }
+    return base;
+  };
+}
 
 console.log('%cCoach OS Program Builder drop-in v'+PB.ver+' loaded',
             'color:#b8ff57;font-weight:bold');
