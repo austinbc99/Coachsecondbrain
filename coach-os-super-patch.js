@@ -1,3 +1,7 @@
+/* Identifiers prefixed _sp* on 2026-07-28: these six top-level consts collided
+   with brain.js (which loads first). A duplicate top-level const is an early
+   error, so this entire file silently never executed. Renaming scopes them
+   apart; super-patch now chains on top of brain.js as intended. */
 // ═══════════════════════════════════════════════════════════════════════
 // COACH OS SUPER PATCH — one file, everything.
 // Replaces program-builder-v2.js through v6.js entirely. Load ONE file:
@@ -58,7 +62,7 @@ function scanForDuplicates(){
   alert('Possible duplicates found:\n\n'+results.join('\n')+'\n\nReview these in the Athletes tab.');
 }
 
-const _origSaveValdEntry=window.saveValdEntry;
+const _sp_origSaveValdEntry=window.saveValdEntry;
 window.saveValdEntry=function(){
   const sel=document.getElementById('ve-sel');
   const isNew=sel&&sel.value==='_new';
@@ -74,20 +78,20 @@ window.saveValdEntry=function(){
         veSelChange();
         window._dupeGuardOverride=false;
         toast('Matched to existing athlete: '+an(match.near[0]));
-        _origSaveValdEntry.apply(this,arguments);
+        _sp_origSaveValdEntry.apply(this,arguments);
         return;
       }
       window._dupeGuardOverride=true;
     }
   }
   window._dupeGuardOverride=false;
-  _origSaveValdEntry.apply(this,arguments);
+  _sp_origSaveValdEntry.apply(this,arguments);
 };
 
-const _origVpdfProcess=window.vpdfProcess;
-if(_origVpdfProcess){
+const _sp_origVpdfProcess=window.vpdfProcess;
+if(_sp_origVpdfProcess){
   window.vpdfProcess=async function(file){
-    await _origVpdfProcess.apply(this,arguments);
+    await _sp_origVpdfProcess.apply(this,arguments);
     setTimeout(()=>{
       const sel=document.getElementById('ve-sel');
       if(!sel||sel.value!=='_new')return;
@@ -149,9 +153,9 @@ function _recomputeOhmProfile(ath){
   }
 }
 
-const _origGetMetrics=window.getMetrics;
+const _sp_origGetMetrics=window.getMetrics;
 window.getMetrics=function(a){
-  const m=_origGetMetrics(a);
+  const m=_sp_origGetMetrics(a);
   if(a.ohm&&a.ohm.profile){
     m.ohm_force=a.ohm.profile.force!=null?Math.round(a.ohm.profile.force):undefined;
     m.ohm_velocity=a.ohm.profile.velocity!=null?Math.round(a.ohm.profile.velocity):undefined;
@@ -485,9 +489,9 @@ function runRosterHealthAudit(){
 
 // ═══════════════════════ SECTION 4 — PROMPT BUILDING (why + evidence + safety + film + OHM) ═
 
-const _origBuildWeekPrompt=window.buildWeekPrompt;
+const _sp_origBuildWeekPrompt=window.buildWeekPrompt;
 window.buildWeekPrompt=function(wk,totalWeeks,ath,opts,prevWeekData,actuals){
-  let base=_origBuildWeekPrompt(wk,totalWeeks,ath,opts,prevWeekData,actuals);
+  let base=_sp_origBuildWeekPrompt(wk,totalWeeks,ath,opts,prevWeekData,actuals);
   const m=getMetrics(ath);
 
   if(m.ohm_class){
@@ -973,9 +977,9 @@ function checkPatchIntegrity(){
   return[{n:'Coach OS Super Patch',ok:typeof regenerateFromWeek==='function'&&typeof computeAclCompliance==='function'&&typeof findAthleteMatch==='function'}];
 }
 
-const _origRunSentinelChecks=window.runSentinelChecks;
+const _sp_origRunSentinelChecks=window.runSentinelChecks;
 window.runSentinelChecks=async function(){
-  const checks=await _origRunSentinelChecks.apply(this,arguments);
+  const checks=await _sp_origRunSentinelChecks.apply(this,arguments);
   checkPatchIntegrity().forEach(c=>checks.push({n:'Patch: '+c.n,ok:c.ok,info:c.ok?'Loaded':'Not detected',fix:c.ok?null:'Check the <script> tag for coach-os-super-patch.js is present and loading without a 404'}));
   checks.push({n:'Known issue: dead script reference',ok:false,info:'index.html references coachos-upgrade.js?v=3, which does not exist in the repo (confirmed 404). Harmless, but should be deleted.',fix:'Remove that <script> line from index.html'});
   return checks;
@@ -987,9 +991,9 @@ window.initSprint=function(){
   try{_renderOhmQuickLogSprintTab();_ensureMetricExplorerCard();renderMetricExplorer();_ensurePowerSpeedMapCard();renderPowerSpeedMap();}catch(e){console.warn('sprint tab additions failed',e);}
 };
 
-const _origShowAthDetail=window.showAthDetail;
+const _sp_origShowAthDetail=window.showAthDetail;
 window.showAthDetail=function(id){
-  _origShowAthDetail.apply(this,arguments);
+  _sp_origShowAthDetail.apply(this,arguments);
   try{_renderOhmQuickLogAthDetail(id);}catch(e){}
 };
 
