@@ -1,9 +1,26 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — BLOCKS & PHASES DROP-IN  v1.2
+   COACH OS — BLOCKS & PHASES DROP-IN  v1.3
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: after program-builder-dropin.js. Wrap chain:
    super-patch render → PB.decorate → BLK.decorate.
+
+   v1.3 — PROTOCOL A-GRADE PASS (audited against the methodology stack)
+   1. REST COLUMN (Holler): every exercise gets an editable "rest"
+      field — new column before Actual on desktop/iPad, labeled field
+      on phone, on the print sheet, and required from generation. Full
+      recovery between speed reps IS the Feed-the-Cats mechanism; it
+      was the most protocol-relevant thing the schema lacked.
+   2. ECC LOAD MODERATION (Dietz): setting an eccentric emphasis now
+      says out loud what it changed and what it didn't — tempo is set
+      automatically, loads are NOT, and the coach is told to cut them
+      to ~80%. A visible reminder sits in the emphasis row while ECC
+      is active. The tool changing half a prescription silently was
+      the biggest safety gap the audit found.
+   3. IN-SEASON × ECC GATE (Dietz + Holler): an eccentric emphasis on
+      an In-Season program asks for confirmation before it applies —
+      slow-eccentric soreness during a competitive season is a cost
+      both sources would flag on sight.
 
    v1.2 — RESPONSIVE + TRIPHASIC (Dietz) LAYER
    1. Phone/iPad: exercise-row tds get data-l labels so theme-clean.css
@@ -44,7 +61,7 @@
 if(window.__blkDropinLoaded){console.warn('blocks-dropin already loaded');return;}
 window.__blkDropinLoaded=true;
 
-const BLK={ver:'1.2'};
+const BLK={ver:'1.3'};
 window.BLK=BLK;
 
 /* ═══════════════ SECTION 1 — CANONICAL BLOCKS ═══════════════════════════ */
@@ -134,6 +151,7 @@ if(typeof window.buildWeekPrompt==='function'){
       +'\nORDERING & LETTERING (mandatory): every exercise outside Movement Prep also gets a "pair" field using standard strength-sheet lettering, sequential through the session: "A1","A2" means those two are performed as a superset or contrast pair; the next group is "B1", then "C1", and so on. A standalone exercise is the sole member of its letter (e.g. "B1"). Movement Prep exercises get no "pair" field. '
       +'Only pair CNS-compatible work — strength with strength, strength with a contrast plyo, or accessory with accessory. Never pair speed, COD, or conditioning work with anything.'
       +'\nTRIPHASIC EMPHASIS: when the plan calls for triphasic phase work, set the week object\'s "emphasis" field to "ECC", "ISO", or "CON" and reflect it in Primary Strength prescriptions: eccentric weeks use ~5s lowering tempos (5-0-1) at moderate loads; isometric weeks use 3-5s mid-range pauses (1-4-X); concentric weeks cut volume and demand explosive intent (1-0-X). Progress ECC then ISO then CON across a block, never mixed within a week.'
+      +'\nREST (mandatory): every exercise object includes a "rest" field. Speed, COD, and plyo work gets FULL recovery ("full" or "2-3 min") — quality dies without it and under-rested speed work is just conditioning. Strength rest matches the goal (2-3 min primaries, 60-90s accessories). Conditioning states the work:rest explicitly.'
       +'\nSEASON CONTEXT: if the program object has a "season" field, program to it. In-Season: minimum effective dose — 1-2 brief strength touches per week, maintain qualities with explosive intent, nothing that creates next-day soreness, speed work stays sharp and short. Off-Season: full volume progression is available. Pre-Season: shift from building toward expression — taper accessory volume, keep speed and reactive quality high.';
     return base;
   };
@@ -213,13 +231,32 @@ BLK.decorate=function(athId,forceWkIdx){
   (w.days||[]).forEach((d,dIdx)=>(d.sessions||[]).forEach((s,sIdx)=>{
     const tbl=document.querySelectorAll('.prog-week table.tbl')[ti++]; if(!tbl)return;
     const body=tbl.querySelector('tbody'); if(!body)return;
+    const rows=Array.from(body.rows);           // snapshot BEFORE inserting
+
+    // REST COLUMN (Holler): inserted before Actual, same live editEx
+    // input as every other field. Full recovery between speed reps is
+    // the mechanism — it deserves a column, not a cue afterthought.
+    const ths=[...tbl.querySelectorAll('thead th')];
+    const ai=ths.findIndex(t=>t.textContent.trim()==='Actual');
+    if(ai>-1&&!tbl.dataset.blkRest){
+      tbl.dataset.blkRest='1';
+      const th=document.createElement('th');
+      th.textContent='Rest';
+      th.style.cssText=ths[ai].style.cssText;
+      ths[ai].parentNode.insertBefore(th,ths[ai]);
+      rows.forEach((tr,ei)=>{
+        const ex=(s.exercises||[])[ei]; if(!ex)return;
+        const td=document.createElement('td');
+        td.innerHTML='<input value="'+String(ex.rest||'').replace(/"/g,'&quot;')+'" placeholder="--" '
+          +'onchange="editEx(\''+athId+'\','+wkIdx+','+dIdx+','+sIdx+','+ei+',\'rest\',this.value)" '
+          +'style="padding:3px;font-size:10px;width:56px;text-align:center;color:var(--text2);font-family:var(--mono);">';
+        tr.insertBefore(td,tr.cells[ai]);
+      });
+    }
     const cols=tbl.querySelectorAll('thead th').length||10;
-    // data-l labels per td so the phone stylesheet can card-ify rows;
-    // "Weight" reads as "Load" on a sheet
     const labels=[...tbl.querySelectorAll('thead th')].map(th=>{
       const t=th.textContent.trim(); return t==='Weight'?'Load':t;
     });
-    const rows=Array.from(body.rows);           // snapshot BEFORE inserting
     const letters=BLK.letters(s);
     let prevBlock=null;
 
@@ -306,13 +343,23 @@ const BALLISTIC=/jump|hop|bound|plyo|throw|med ?ball|skater|sprint|snatch(?!.*gr
 BLK.setEmphasis=function(athId,wkIdx,mode){
   const p=S.programs[athId]; if(!p)return;
   const w=p.weeks_data[wkIdx]; if(!w)return;
-  w.emphasis=(w.emphasis===mode)?null:mode;   // tap again to clear
+  const turningOn=(w.emphasis!==mode);
+  // In-Season × ECC gate: slow-eccentric soreness mid-season is a cost
+  // Dietz reserves for the off-season and Holler wouldn't pay at all.
+  // Confirm, don't forbid — the coach may have a bye week in mind.
+  if(turningOn&&mode==='ECC'&&p.season==='In-Season'){
+    if(typeof confirm==='function'&&!confirm('This program is In-Season. An eccentric emphasis creates next-day soreness — Dietz runs ECC blocks off-season, and in-season MED says don\'t. Set it anyway?'))return;
+  }
+  w.emphasis=turningOn?mode:null;             // tap again to clear
   if(w.emphasis&&BLK.TRI[mode]){
     let n=0;
     (w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>(s.exercises||[]).forEach(ex=>{
       if(ex.block==='Primary Strength'&&!BALLISTIC.test(ex.name||'')){ex.tempo=BLK.TRI[mode].tempo;n++;}
     })));
-    toast(BLK.TRI[mode].label+' week — tempo '+BLK.TRI[mode].tempo+' set on '+n+' primary lift'+(n===1?'':'s'));
+    // Say what changed AND what didn't: tempo is automatic, load is not.
+    toast(mode==='ECC'
+      ?('Eccentric week — tempo 5-0-1 set on '+n+' primary lift'+(n===1?'':'s')+'. Loads NOT changed: cut them to ~80% of normal yourself')
+      :(BLK.TRI[mode].label+' week — tempo '+BLK.TRI[mode].tempo+' set on '+n+' primary lift'+(n===1?'':'s')));
   }
   p.edited=true; save(); showProgDetail(athId,wkIdx);
 };
@@ -347,7 +394,10 @@ BLK.emphControl=function(p,athId,wkIdx){
   const sel='<select onchange="BLK.setSeason(\''+athId+'\',this.value)" '
     +'style="margin-left:auto;font-size:8px;letter-spacing:.5px;padding:3px 6px;border-radius:var(--r);'
     +'border:1px solid var(--border2);background:transparent;color:var(--text2);">'+seasons+'</select>';
-  div.innerHTML=lab+chips+sel;
+  const eccNote=w.emphasis==='ECC'
+    ?'<span style="font-size:8px;color:var(--orange);letter-spacing:.3px;">moderate loads \u2248 80% — slow eccentrics at full load is an injury bet</span>'
+    :'';
+  div.innerHTML=lab+chips+eccNote+sel;
   anchor.parentNode.insertBefore(div,anchor.nextSibling);
 };
 
@@ -420,11 +470,11 @@ if(window.PB&&typeof PB.printProgram==='function'){
         return'<div class="session"><div class="sesshead">'+d.day+' · '+s.type+'</div>'
         +(s.warmup?'<div class="warm">Warm-up — '+s.warmup+'</div>':'')
         +'<table><thead><tr><th class="ord"></th><th>Exercise</th><th>Sets</th><th>Reps</th>'
-        +'<th>Tempo</th><th>Load</th><th>RPE</th><th class="act">Actual</th></tr></thead><tbody>'
+        +'<th>Tempo</th><th>Load</th><th>RPE</th><th>Rest</th><th class="act">Actual</th></tr></thead><tbody>'
         +(s.exercises||[]).map((ex,ei)=>{
           let hdr='';
           if(ex.block&&ex.block!==prevB){
-            hdr='<tr class="blkrow"><td colspan="8">'+ex.block+'</td></tr>';
+            hdr='<tr class="blkrow"><td colspan="9">'+ex.block+'</td></tr>';
             prevB=ex.block;
           }
           return hdr+'<tr>'
@@ -433,6 +483,7 @@ if(window.PB&&typeof PB.printProgram==='function'){
           +(ex.cue?'<div class="cue">'+ex.cue+'</div>':'')+'</td>'
           +'<td>'+(ex.sets||'')+'</td><td>'+(ex.reps||'')+'</td><td class="num">'+(ex.tempo||'')+'</td>'
           +'<td class="num">'+(ex.weight||'')+'</td><td class="num">'+(ex.rpe||'')+'</td>'
+          +'<td class="num">'+(ex.rest||'')+'</td>'
           +'<td class="act"></td></tr>';
         }).join('')
         +'</tbody></table>'
