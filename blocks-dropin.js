@@ -182,7 +182,7 @@ BLK.skin=function(root){
   // accent-filled elements hardcode color:#000 from the mint era —
   // navy fill needs white text (week-nav active button, etc.)
   root.querySelectorAll('[style*="background:var(--accent)"],[style*="background: var(--accent)"]').forEach(el=>{
-    el.style.color='#fff';
+    el.style.color='var(--bg)';   // dark-on-light-accent; tracks the theme
   });
   // uniform quiet toolbar
   const bar=root.querySelector('#pb-toolbar');
@@ -387,7 +387,7 @@ BLK.emphControl=function(p,athId,wkIdx){
       +'style="padding:3px 10px;font-size:8px;letter-spacing:1px;border-radius:var(--r);cursor:pointer;'
       +'border:1px solid '+(on?'var(--accent)':'var(--border2)')+';'
       +'background:'+(on?'var(--accent)':'transparent')+';'
-      +'color:'+(on?'#fff':'var(--text2)')+';">'+m+'</button>';
+      +'color:'+(on?'var(--bg)':'var(--text2)')+';">'+m+'</button>';
   }).join('');
   const seasons=['','Off-Season','Pre-Season','In-Season'].map(v=>
     '<option value="'+v+'"'+((p.season||'')===v?' selected':'')+'>'+(v||'Season —')+'</option>').join('');
