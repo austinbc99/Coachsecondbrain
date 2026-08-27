@@ -104,3 +104,8 @@ body{
   .prog-week .tbl th{padding:6px 7px;}
   .prog-week .tbl td{padding:6px 7px;}
 }
+
+/* roster-card delete control (quickDelAth in index.html) */
+.ath-card{position:relative;}
+.ath-del{position:absolute;top:6px;right:8px;font-size:12px;line-height:1;color:var(--text3);cursor:pointer;padding:4px;}
+.ath-del:hover{color:var(--red);}
