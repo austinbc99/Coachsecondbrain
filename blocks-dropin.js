@@ -1,9 +1,26 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — BLOCKS & PHASES DROP-IN  v1.1
+   COACH OS — BLOCKS & PHASES DROP-IN  v1.2
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: after program-builder-dropin.js. Wrap chain:
    super-patch render → PB.decorate → BLK.decorate.
+
+   v1.2 — RESPONSIVE + TRIPHASIC (Dietz) LAYER
+   1. Phone/iPad: exercise-row tds get data-l labels so theme-clean.css
+      can card-ify tables under 740px — full list visible, every field
+      still the same live editEx input. iPad keeps the table, tightened.
+   2. Triphasic emphasis per week (ECC / ISO / CON): one tap stores the
+      emphasis and sets the matching tempo on that week's Primary
+      Strength lifts (5-0-1 eccentric, 1-4-X isometric, 1-0-X
+      concentric intent). Clearing an emphasis clears only the tag —
+      never guesses at restoring tempos.
+   3. Season mode per program (Off / Pre / In-Season) feeding the
+      generation prompt: in-season = minimum effective dose (Holler),
+      off-season = full progression, pre-season = shift to expression.
+   4. Fixes: emoji-strip now re-runs on every render (the v1.1 guard
+      sat on the persistent #prog-detail element and skipped re-renders
+      after a week switch); accent-filled week-nav buttons get white
+      text (they hardcode #000 for the old mint theme).
 
    v1.1 — STRENGTH-SHEET LETTERING + PROFESSIONAL RESTYLE
    1. Letter ordering (A1/A2, B1...) on every exercise outside Movement
@@ -27,7 +44,7 @@
 if(window.__blkDropinLoaded){console.warn('blocks-dropin already loaded');return;}
 window.__blkDropinLoaded=true;
 
-const BLK={ver:'1.1'};
+const BLK={ver:'1.2'};
 window.BLK=BLK;
 
 /* ═══════════════ SECTION 1 — CANONICAL BLOCKS ═══════════════════════════ */
@@ -113,7 +130,9 @@ if(typeof window.buildWeekPrompt==='function'){
     base+='\n\nSESSION BLOCK STRUCTURE (mandatory): every exercise object must also include a "block" field, exactly one of: "Movement Prep","Speed / COD","Plyo / Reactive","Primary Strength","Accessory","Conditioning". '
       +'List exercises in that block order within each session — speed, COD, and reactive work come FIRST after movement prep, while the CNS is fresh; they never follow strength or conditioning. Not every session needs every block.'
       +'\nORDERING & LETTERING (mandatory): every exercise outside Movement Prep also gets a "pair" field using standard strength-sheet lettering, sequential through the session: "A1","A2" means those two are performed as a superset or contrast pair; the next group is "B1", then "C1", and so on. A standalone exercise is the sole member of its letter (e.g. "B1"). Movement Prep exercises get no "pair" field. '
-      +'Only pair CNS-compatible work — strength with strength, strength with a contrast plyo, or accessory with accessory. Never pair speed, COD, or conditioning work with anything.';
+      +'Only pair CNS-compatible work — strength with strength, strength with a contrast plyo, or accessory with accessory. Never pair speed, COD, or conditioning work with anything.'
+      +'\nTRIPHASIC EMPHASIS: when the plan calls for triphasic phase work, set the week object\'s "emphasis" field to "ECC", "ISO", or "CON" and reflect it in Primary Strength prescriptions: eccentric weeks use ~5s lowering tempos (5-0-1) at moderate loads; isometric weeks use 3-5s mid-range pauses (1-4-X); concentric weeks cut volume and demand explosive intent (1-0-X). Progress ECC then ISO then CON across a block, never mixed within a week.'
+      +'\nSEASON CONTEXT: if the program object has a "season" field, program to it. In-Season: minimum effective dose — 1-2 brief strength touches per week, maintain qualities with explosive intent, nothing that creates next-day soreness, speed work stays sharp and short. Off-Season: full volume progression is available. Pre-Season: shift from building toward expression — taper accessory volume, keep speed and reactive quality high.';
     return base;
   };
 }
@@ -140,6 +159,11 @@ BLK.skin=function(root){
         +'border-radius:2px;margin-left:4px;';
     }
   });
+  // accent-filled elements hardcode color:#000 from the mint era —
+  // navy fill needs white text (week-nav active button, etc.)
+  root.querySelectorAll('[style*="background:var(--accent)"],[style*="background: var(--accent)"]').forEach(el=>{
+    el.style.color='#fff';
+  });
   // uniform quiet toolbar
   const bar=root.querySelector('#pb-toolbar');
   if(bar)bar.querySelectorAll('button').forEach(b=>{
@@ -165,9 +189,11 @@ BLK.decorate=function(athId,forceWkIdx){
   const detail=document.getElementById('prog-detail');
   const host=document.querySelector('.prog-week'); if(!host||!detail)return;
 
-  if(detail.dataset.blkSkin!=='1'){BLK.skin(detail);detail.dataset.blkSkin='1';}
+  BLK.skin(detail);   // idempotent — must re-run: base render replaces
+                      // #prog-detail innerHTML on every week switch
 
   BLK.phaseStrip(p,athId,wkIdx);
+  BLK.emphControl(p,athId,wkIdx);
 
   const untagged=(w.days||[]).some(d=>(d.sessions||[]).some(s=>(s.exercises||[]).some(ex=>!ex.block)));
   const bar=document.getElementById('pb-toolbar');
@@ -186,12 +212,18 @@ BLK.decorate=function(athId,forceWkIdx){
     const tbl=document.querySelectorAll('.prog-week table.tbl')[ti++]; if(!tbl)return;
     const body=tbl.querySelector('tbody'); if(!body)return;
     const cols=tbl.querySelectorAll('thead th').length||10;
+    // data-l labels per td so the phone stylesheet can card-ify rows;
+    // "Weight" reads as "Load" on a sheet
+    const labels=[...tbl.querySelectorAll('thead th')].map(th=>{
+      const t=th.textContent.trim(); return t==='Weight'?'Load':t;
+    });
     const rows=Array.from(body.rows);           // snapshot BEFORE inserting
     const letters=BLK.letters(s);
     let prevBlock=null;
 
     rows.forEach((tr,ei)=>{
       const ex=(s.exercises||[])[ei]; if(!ex)return;
+      [...tr.cells].forEach((td,ci)=>{if(labels[ci]&&labels[ci].length>1)td.setAttribute('data-l',labels[ci]);});
 
       if(ex.block&&ex.block!==prevBlock){
         let end=ei;
@@ -246,6 +278,75 @@ BLK.cycle=function(athId,wkIdx,di,si,ei){
   const i=BLK.CANON.findIndex(b=>b.name===ex.block);
   ex.block=BLK.CANON[(i+1)%BLK.CANON.length].name;
   save(); showProgDetail(athId,wkIdx);
+};
+
+/* ═══════════════ SECTION 6b — TRIPHASIC EMPHASIS + SEASON ═══════════════
+   Dietz's triphasic model: strength qualities are trained by phase of
+   muscle action — eccentric, then isometric, then concentric — before
+   expressing them at speed. The mechanism worth knowing: the eccentric
+   and isometric phases are where tissue absorbs and redirects force,
+   which is exactly the ACL / landing-quality story this roster runs
+   on. One tap sets the emphasis and the matching tempos; every field
+   stays hand-editable afterward. */
+
+BLK.TRI={
+  ECC:{tempo:'5-0-1',label:'Eccentric'},
+  ISO:{tempo:'1-4-X',label:'Isometric'},
+  CON:{tempo:'1-0-X',label:'Concentric'}
+};
+
+// explosive movements never take a slow tempo — a 5s-eccentric box jump
+// inside a contrast pair would defeat the pairing (potentiate heavy,
+// express FAST). So emphasis tempos apply only to true lifts, even
+// when a ballistic movement is correctly tagged Primary Strength.
+const BALLISTIC=/jump|hop|bound|plyo|throw|med ?ball|skater|sprint|snatch(?!.*grip)|clean(?!.*pull.*slow)/i;
+
+BLK.setEmphasis=function(athId,wkIdx,mode){
+  const p=S.programs[athId]; if(!p)return;
+  const w=p.weeks_data[wkIdx]; if(!w)return;
+  w.emphasis=(w.emphasis===mode)?null:mode;   // tap again to clear
+  if(w.emphasis&&BLK.TRI[mode]){
+    let n=0;
+    (w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>(s.exercises||[]).forEach(ex=>{
+      if(ex.block==='Primary Strength'&&!BALLISTIC.test(ex.name||'')){ex.tempo=BLK.TRI[mode].tempo;n++;}
+    })));
+    toast(BLK.TRI[mode].label+' week — tempo '+BLK.TRI[mode].tempo+' set on '+n+' primary lift'+(n===1?'':'s'));
+  }
+  p.edited=true; save(); showProgDetail(athId,wkIdx);
+};
+
+BLK.setSeason=function(athId,val){
+  const p=S.programs[athId]; if(!p)return;
+  p.season=val||null; p.edited=true; save();
+  toast(val?('Season set: '+val+' — next generation will program to it'):'Season cleared');
+};
+
+BLK.emphControl=function(p,athId,wkIdx){
+  const old=document.getElementById('blk-emph'); if(old)old.remove();
+  const strip=document.getElementById('blk-phasestrip');
+  const bar=document.getElementById('pb-toolbar');
+  const anchor=strip||bar; if(!anchor)return;
+  const w=p.weeks_data[wkIdx]; if(!w)return;
+  const div=document.createElement('div');
+  div.id='blk-emph';
+  div.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;';
+  const lab='<span style="font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);">Wk '+(wkIdx+1)+' emphasis</span>';
+  const chips=['ECC','ISO','CON'].map(m=>{
+    const on=w.emphasis===m;
+    return'<button onclick="BLK.setEmphasis(\''+athId+'\','+wkIdx+',\''+m+'\')" '
+      +'title="'+BLK.TRI[m].label+' — sets '+BLK.TRI[m].tempo+' on primary lifts" '
+      +'style="padding:3px 10px;font-size:8px;letter-spacing:1px;border-radius:var(--r);cursor:pointer;'
+      +'border:1px solid '+(on?'var(--accent)':'var(--border2)')+';'
+      +'background:'+(on?'var(--accent)':'transparent')+';'
+      +'color:'+(on?'#fff':'var(--text2)')+';">'+m+'</button>';
+  }).join('');
+  const seasons=['','Off-Season','Pre-Season','In-Season'].map(v=>
+    '<option value="'+v+'"'+((p.season||'')===v?' selected':'')+'>'+(v||'Season —')+'</option>').join('');
+  const sel='<select onchange="BLK.setSeason(\''+athId+'\',this.value)" '
+    +'style="margin-left:auto;font-size:8px;letter-spacing:.5px;padding:3px 6px;border-radius:var(--r);'
+    +'border:1px solid var(--border2);background:transparent;color:var(--text2);">'+seasons+'</select>';
+  div.innerHTML=lab+chips+sel;
+  anchor.parentNode.insertBefore(div,anchor.nextSibling);
 };
 
 /* ═══════════════ SECTION 7 — PHASE STRIP ════════════════════════════════
