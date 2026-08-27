@@ -8,32 +8,32 @@
    here re-skins every screen with zero logic changes. Loads as the
    LAST stylesheet in <head> so it wins the cascade.
 
-   DIRECTION: paper + ink, matching the print sheet — the app and the
-   sheet a parent holds should feel like one system. Mint-terminal
-   accent replaced with the same restrained navy the print uses. IBM
-   Plex Mono stays for DATA (numbers, labels — tabular numerals are
-   genuinely useful on a coaching screen) but body text moves to a
-   clean sans. Grid-paper background and 0px corners retired.
+   DIRECTION (v2): clean dark. Same professional system as the light
+   pass — sans body, mono data, hairlines, quiet chips — inverted to
+   near-black. Deliberately NOT the old terminal look: no pure #000,
+   no mint, no grid paper. Accent is a soft steel blue (the navy from
+   the print sheet lightened for contrast on dark). The print sheet
+   itself stays paper/ink — printed programs are never dark.
 
    REVERT: delete the <link> line in index.html. Nothing else changes.
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root{
-  --bg:#eef0f2;            /* page */
-  --bg2:#f6f7f8;           /* raised */
-  --bg3:#ffffff;           /* cards */
-  --bg4:#f2f4f6;           /* hover / wells */
-  --border:#e4e6e9;
-  --border2:#d5d9dd;
-  --accent:#2f4b6e;        /* navy — same as the print sheet's section color */
-  --accent2:#3e5f88;
-  --adim:rgba(47,75,110,.07);
-  --text:#16181c;
-  --text2:#5f646b;
-  --text3:#a4a9af;
-  --red:#b3382f;           /* all status colors re-weighted for white bg */
-  --orange:#a8620c;
-  --blue:#2563a8;
+  --bg:#0e0f11;            /* page — near-black, softer than #000 */
+  --bg2:#141518;           /* raised */
+  --bg3:#1a1c1f;           /* cards */
+  --bg4:#22252a;           /* hover / wells */
+  --border:#26292d;
+  --border2:#34383d;
+  --accent:#6b93c4;        /* print-sheet navy, lightened for dark contrast */
+  --accent2:#86a9d4;
+  --adim:rgba(107,147,196,.10);
+  --text:#e8e9ea;
+  --text2:#9ba0a6;
+  --text3:#5c6167;
+  --red:#e0655c;           /* all status colors re-weighted for dark bg */
+  --orange:#d99a45;
+  --blue:#5b9bd9;
   --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Consolas,monospace;
   --disp:'Avenir Next','Helvetica Neue',Helvetica,Arial,sans-serif;
   --r:6px;
@@ -50,16 +50,16 @@ body{
 
 /* elements that hardcode color:#000 for text on the old mint accent —
    navy fill needs white text */
-.tb-brain,.btn-primary,.btn-primary:hover,#toast,.ai-av.brain{color:#fff;}
+.tb-brain,.btn-primary,.btn-primary:hover,#toast,.ai-av.brain{color:#0e0f11;}
 
 /* logo was accent-tinted terminal type; on paper it's just the wordmark */
 .tb-logo{color:var(--text);font-weight:700;letter-spacing:2px;}
 
 /* amber #fbbf24 is hardcoded for C-grades / mid values — unreadable on
    white; re-point to the re-weighted amber */
-.grade-C{border-color:#a8620c;color:#a8620c;}
-.lb-val.mid{color:#a8620c;}
-.pct-avg{background:rgba(168,98,12,.08);color:#a8620c;border:1px solid rgba(168,98,12,.3);}
+.grade-C{border-color:#d99a45;color:#d99a45;}
+.lb-val.mid{color:#d99a45;}
+.pct-avg{background:rgba(217,154,69,.10);color:#d99a45;border:1px solid rgba(217,154,69,.3);}
 
 /* ═══════════════ RESPONSIVE — v1.1 ══════════════════════════════════════
    Phone (≤740px): program tables become stacked cards — one card per
