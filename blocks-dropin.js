@@ -100,7 +100,9 @@ const RULES=[
   ['Primary Strength',/back squat|front squat|goblet squat|split squat|trap ?bar|deadlift|\brdl\b|hip thrust|bench|\bohp\b|overhead press|pull-?up|chin-?up|\brow\b(?!er)|clean|snatch|push press/i]
 ];
 BLK.classify=function(ex){
-  const n=(ex.name||'');
+  // iOS keyboards auto-curl apostrophes — normalize before matching or
+  // "World's Greatest" (curly) falls through to Accessory
+  const n=(ex.name||'').replace(/[\u2018\u2019]/g,"'");
   for(const[b,re]of RULES){if(re.test(n))return b;}
   return'Accessory';
 };
