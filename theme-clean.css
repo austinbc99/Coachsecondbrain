@@ -60,3 +60,47 @@ body{
 .grade-C{border-color:#a8620c;color:#a8620c;}
 .lb-val.mid{color:#a8620c;}
 .pct-avg{background:rgba(168,98,12,.08);color:#a8620c;border:1px solid rgba(168,98,12,.3);}
+
+/* ═══════════════ RESPONSIVE — v1.1 ══════════════════════════════════════
+   Phone (≤740px): program tables become stacked cards — one card per
+   exercise, every field still its live editable input, labels supplied
+   by the data-l attributes blocks-dropin sets at render. Block headers
+   become section labels between cards. Nothing is hidden: the full
+   exercise list is the point.
+   iPad (741–1100px): the table survives comfortably — just tightened. */
+
+@media (max-width:740px){
+  .prog-week .tbl,
+  .prog-week .tbl tbody{display:block;min-width:0!important;}
+  .prog-week .tbl thead{display:none;}
+
+  .prog-week .tbl tbody tr{
+    display:flex;flex-wrap:wrap;gap:3px 14px;align-items:center;
+    border:1px solid var(--border);border-radius:var(--r);
+    background:var(--bg3);margin:8px 0;padding:9px 11px;
+  }
+  /* block header rows read as section labels, not cards */
+  .prog-week .tbl tbody tr[data-blk]{
+    border:none;background:transparent;border-radius:0;
+    margin:14px 0 0;padding:0;
+  }
+  .prog-week .tbl tbody tr[data-blk] td{width:100%;}
+
+  .prog-week .tbl td{
+    display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+    border:none;padding:2px 0;
+  }
+  .prog-week .tbl td::before{
+    content:attr(data-l);
+    font-size:7px;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--text3);
+  }
+  .prog-week .tbl td[data-l="Exercise"]{flex:1 1 78%;}
+  .prog-week .tbl td[data-l="Exercise"]::before{content:none;}
+  .prog-week .tbl td[data-l="Exercise"] input{flex:1;min-width:120px;font-weight:600;}
+}
+
+@media (min-width:741px) and (max-width:1100px){
+  .prog-week .tbl th{padding:6px 7px;}
+  .prog-week .tbl td{padding:6px 7px;}
+}
