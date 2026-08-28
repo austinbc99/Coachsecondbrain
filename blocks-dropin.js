@@ -61,7 +61,7 @@
 if(window.__blkDropinLoaded){console.warn('blocks-dropin already loaded');return;}
 window.__blkDropinLoaded=true;
 
-const BLK={ver:'1.3'};
+const BLK={ver:'1.4'};
 window.BLK=BLK;
 
 /* ═══════════════ SECTION 1 — CANONICAL BLOCKS ═══════════════════════════ */
@@ -146,6 +146,10 @@ if(typeof window.buildWeekPrompt==='function'){
   const _blkPrevBWP=window.buildWeekPrompt;
   window.buildWeekPrompt=function(){
     let base=_blkPrevBWP.apply(this,arguments);
+    // Setup values become concrete prompt facts, not vague hints
+    const o=arguments[3]||{};
+    if(o.season)base+='\nTHIS PROGRAM IS '+String(o.season).toUpperCase()+' — apply the season rules below to every week.';
+    if(o.sessionLen)base+='\nSESSION LENGTH: each session must fit '+o.sessionLen+' minutes including warm-up. Size sessions accordingly: 30 min = 4-6 exercises, 45 min = 6-8, 60 min = 8-10, 75 min = up to 12. Never pad a short session with filler.';
     base+='\n\nSESSION BLOCK STRUCTURE (mandatory): every exercise object must also include a "block" field, exactly one of: "Movement Prep","Speed / COD","Plyo / Reactive","Primary Strength","Accessory","Conditioning". '
       +'List exercises in that block order within each session — speed, COD, and reactive work come FIRST after movement prep, while the CNS is fresh; they never follow strength or conditioning. Not every session needs every block.'
       +'\nORDERING & LETTERING (mandatory): every exercise outside Movement Prep also gets a "pair" field using standard strength-sheet lettering, sequential through the session: "A1","A2" means those two are performed as a superset or contrast pair; the next group is "B1", then "C1", and so on. A standalone exercise is the sole member of its letter (e.g. "B1"). Movement Prep exercises get no "pair" field. '
