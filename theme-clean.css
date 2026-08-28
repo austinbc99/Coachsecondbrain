@@ -109,3 +109,41 @@ body{
 .ath-card{position:relative;}
 .ath-del{position:absolute;top:6px;right:8px;font-size:12px;line-height:1;color:var(--text3);cursor:pointer;padding:4px;}
 .ath-del:hover{color:var(--red);}
+
+/* ═══ CONTAINER-BASED CARDS — v1.2 ═══════════════════════════════════════
+   The media query above keys on VIEWPORT width, but on iPad the program
+   pane is half of a split layout: the pane is phone-narrow while the
+   screen is wide, so the breakpoint never fired and ten columns crushed
+   into half a screen. Container queries key on the pane's OWN width —
+   cards whenever the program area itself is tight, on any device. */
+#prog-detail{container-type:inline-size;}
+@container (max-width:700px){
+  .prog-week .tbl,
+  .prog-week .tbl tbody{display:block;min-width:0!important;}
+  .prog-week .tbl thead{display:none;}
+
+  .prog-week .tbl tbody tr{
+    display:flex;flex-wrap:wrap;gap:3px 14px;align-items:center;
+    border:1px solid var(--border);border-radius:var(--r);
+    background:var(--bg3);margin:8px 0;padding:9px 11px;
+  }
+  /* block header rows read as section labels, not cards */
+  .prog-week .tbl tbody tr[data-blk]{
+    border:none;background:transparent;border-radius:0;
+    margin:14px 0 0;padding:0;
+  }
+  .prog-week .tbl tbody tr[data-blk] td{width:100%;}
+
+  .prog-week .tbl td{
+    display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+    border:none;padding:2px 0;
+  }
+  .prog-week .tbl td::before{
+    content:attr(data-l);
+    font-size:7px;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--text3);
+  }
+  .prog-week .tbl td[data-l="Exercise"]{flex:1 1 78%;}
+  .prog-week .tbl td[data-l="Exercise"]::before{content:none;}
+  .prog-week .tbl td[data-l="Exercise"] input{flex:1;min-width:120px;font-weight:600;}
+}
