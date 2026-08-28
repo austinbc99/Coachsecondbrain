@@ -635,7 +635,7 @@ window.genProgram=async function(resumeAthId){
     const weekActuals=(S.programs[athId].actuals&&S.programs[athId].actuals['wk'+(wk-1)])||null;
     const prompt=isRetest?buildRetestWeekPrompt(wk,ath,prevWeek):buildWeekPrompt(wk,totalWeeks,ath,opts,prevWeek,weekActuals);
     if(btn)btn.textContent='Wk '+wk+'/'+totalWeeks+'...';
-    const{res,error,message}=await _apiFetchWithBackoff({max_tokens:2000,system:'You are a JSON-only S&C week generator. Output ONLY valid JSON for ONE week. Start with { end with }. No markdown. No explanation.',messages:[{role:'user',content:prompt}]},4);
+    const{res,error,message}=await _apiFetchWithBackoff({max_tokens:6000,system:'You are a JSON-only S&C week generator. Output ONLY valid JSON for ONE week. Start with { end with }. No markdown. No explanation.',messages:[{role:'user',content:prompt}]},4);
     if(error){failed=true;failReason=message;break;}
     const d=await res.json();
     if(d.error){failed=true;failReason=(d.error.message||'API error');break;}
