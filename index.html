@@ -288,7 +288,7 @@ label{font-size:8px;letter-spacing:2px;color:var(--text3);text-transform:upperca
 <!-- PROGRAMS -->
 <div class="page" id="pg-programs">
   <div class="ph"><div><div class="ph-title">PROGRAMS</div><div class="ph-sub">AI mesocycles &middot; editable inline</div></div><div class="ph-actions"><select id="prog-ath" style="width:150px;font-size:13px;padding:6px 10px;"><option value="">- Athlete -</option></select><select id="prog-weeks" style="width:80px;font-size:13px;padding:6px 10px;"><option value="4">4 wk</option><option value="6" selected>6 wk</option><option value="8">8 wk</option></select><button class="btn" onclick="toggleProgSettings()">&#9881;</button><button class="btn" onclick="openImportProgram()" style="border-color:rgba(66,165,255,.4);color:var(--blue);">&#128229; Import</button><button class="btn btn-primary" onclick="genProgram()" id="prog-gen-btn">&#9889; Generate</button></div></div>
-  <div class="card" id="prog-settings" style="display:none;border-color:rgba(184,255,87,.25);"><div class="card-title">Setup</div><div class="g2"><div class="fg"><label>Loading</label><select id="prog-loading" style="font-size:14px;padding:7px 10px;"><option value="pct1rm">% 1RM</option><option value="rpe">RPE</option><option value="both" selected>Both</option><option value="none">Manual</option></select></div><div class="fg"><label>Goal</label><select id="prog-goal" style="font-size:14px;padding:7px 10px;"><option value="balanced" selected>Balanced</option><option value="speed">Speed</option><option value="power">Power</option><option value="strength">Strength</option><option value="asym">Asym Fix</option><option value="rtp">RTP</option></select></div></div><div class="fg"><label>Days/week</label><select id="prog-days" style="font-size:14px;padding:7px 10px;"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select></div><div class="fg"><label>Equipment</label><div id="prog-equip" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;"></div></div><div class="fg"><label>Constraints</label><textarea id="prog-constraints" style="height:50px;resize:vertical;font-size:13px;padding:8px;" placeholder="injuries, limitations..."></textarea></div></div>
+  <div class="card" id="prog-settings" style="display:none;border-color:rgba(184,255,87,.25);"><div class="card-title">Setup</div><div class="g2"><div class="fg"><label>Loading</label><select id="prog-loading" style="font-size:14px;padding:7px 10px;"><option value="pct1rm">% 1RM</option><option value="rpe">RPE</option><option value="both" selected>Both</option><option value="none">Manual</option></select></div><div class="fg"><label>Goal</label><select id="prog-goal" style="font-size:14px;padding:7px 10px;"><option value="balanced" selected>Balanced</option><option value="speed">Speed</option><option value="power">Power</option><option value="strength">Strength</option><option value="asym">Asym Fix</option><option value="rtp">RTP</option></select></div></div><div class="fg"><label>Days/week</label><select id="prog-days" style="font-size:14px;padding:7px 10px;"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></div><div class="fg"><label>Season</label><select id="prog-season" style="font-size:14px;padding:7px 10px;"><option value="">—</option><option value="Off-Season">Off-Season</option><option value="Pre-Season">Pre-Season</option><option value="In-Season">In-Season</option></select></div><div class="fg"><label>Session length</label><select id="prog-sesslen" style="font-size:14px;padding:7px 10px;"><option value="">Any</option><option value="30">30 min</option><option value="45">45 min</option><option value="60" selected>60 min</option><option value="75">75 min</option></select></div><div class="fg"><label>Equipment</label><div id="prog-equip" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;"></div></div><div class="fg"><label>Constraints</label><textarea id="prog-constraints" style="height:50px;resize:vertical;font-size:13px;padding:8px;" placeholder="injuries, limitations..."></textarea></div></div>
   <div class="g2" style="align-items:start;"><div id="prog-list"></div><div id="prog-detail"><div class="empty"><div class="ei">&#128203;</div>Select athlete &rarr; Generate</div></div></div>
 </div>
 
@@ -593,6 +593,8 @@ async function genProgram(){
     loading:document.getElementById('prog-loading').value,
     goal:document.getElementById('prog-goal').value,
     days:parseInt(document.getElementById('prog-days').value)||3,
+    season:document.getElementById('prog-season')?document.getElementById('prog-season').value:'',
+    sessionLen:document.getElementById('prog-sesslen')?document.getElementById('prog-sesslen').value:'',
     constraints:document.getElementById('prog-constraints').value.trim()||ath.notes||'',
     equip:(_progEquip&&_progEquip.length)?_progEquip:EQUIPMENT
   };
@@ -607,7 +609,7 @@ async function genProgram(){
   // Init program shell immediately so user sees progress
   const progShell={
     athId,athName:an(ath),generated:today(),
-    weeks:totalWeeks,phase:'Triphasic',goal:opts.goal,
+    weeks:totalWeeks,phase:'Triphasic',goal:opts.goal,season:opts.season||null,
     loading:opts.loading,edited:false,actuals:{},
     primaryGoals:['Build per week'],valdFlags:[],
     weeks_data:[]
@@ -895,7 +897,7 @@ function seedDemo(){S.athletes=[{id:uid(),first:'Hannah',last:'Casano',sport:'La
 <script src="forcelab-dropin.js?v=1"></script>
 <script src="coach-os-norms-engine.js?v=1"></script>
 <script src="program-builder-dropin.js?v=1"></script>
-<script src="blocks-dropin.js?v=6"></script>
+<script src="blocks-dropin.js?v=7"></script>
 <script src="coach-os-shell.js?v=1"></script>
 
 </html>
