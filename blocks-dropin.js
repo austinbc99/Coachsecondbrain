@@ -499,7 +499,9 @@ if(window.PB&&typeof PB.printProgram==='function'){
     if(!win){toast('Popup blocked — allow popups to print');return;}
     win.document.write('<!doctype html><html><head><meta charset="utf-8">'
       +'<title>'+(ath?an(ath):'Program')+'</title><style>'
-      +':root{--ink:#16181c;--mut:#6b7076;--hair:#e2e4e7;--sect:#2f4b6e;}'
+      +'<meta name="color-scheme" content="light">'
+      +':root{--ink:#16181c;--mut:#6b7076;--hair:#e2e4e7;--sect:#2f4b6e;color-scheme:light;}'
+      +'html,body{background:#ffffff;}'
       +'*{box-sizing:border-box;}'
       +'body{font-family:"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif;'
       +'font-size:10.5px;line-height:1.45;color:var(--ink);margin:0;padding:34px 40px;}'
