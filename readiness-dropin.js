@@ -51,7 +51,7 @@
 (function(){
 'use strict';
 if(window.RDY){console.log('[Readiness] already loaded');return;}
-const RDY=window.RDY={ver:'1.0',cfg:{dropPct:8,highRPE:8,baselineN:5}};
+const RDY=window.RDY={ver:'2.0',cfg:{dropPct:8,highRPE:8,baselineN:5}};
 
 /* ---------- state ---------- */
 function ensureState(){if(!S.readiness)S.readiness={};}
@@ -75,7 +75,15 @@ if(typeof window.applyRemote==='function'){
 
 /* ---------- baseline ---------- */
 function baseline(athId){
-  const h=log(athId).filter(e=>e.cmj!=null||e.rsi!=null);
+  /* v2: only response-normal checks feed the baseline. FATIGUED/STALE
+     values are depressed by definition; letting them in drags the
+     baseline down during rough stretches, which mutes flags exactly
+     when they matter most. GREEN always counts; RED counts only when
+     its metrics were normal (pain-triggered, not metric-triggered).
+     Fallback order: normal checks -> any checks -> VALD seed. */
+  const all=log(athId).filter(e=>e.cmj!=null||e.rsi!=null);
+  const okQ=e=>e.quad==='GREEN'||(e.quad==='RED'&&(e.worstPct==null||e.worstPct>-RDY.cfg.dropPct));
+  const h=all.filter(okQ).length?all.filter(okQ):all;
   const lastN=h.slice(-RDY.cfg.baselineN);
   const mean=k=>{const v=lastN.map(e=>e[k]).filter(x=>x!=null&&!isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
   let cmj=mean('cmj'),rsi=mean('rsi');
