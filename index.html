@@ -5522,7 +5522,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 
 <script data-src="evidence-dropin.js">
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — EVIDENCE LAYER DROP-IN  v1.0
+   COACH OS — EVIDENCE LAYER DROP-IN  v1.1
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: LAST (after performance-dropin.js).
@@ -5546,6 +5546,9 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
      4. Roster merge — adds / fills athletes without ever overwriting a
         value already in the app (Backup→Import replaces everything;
         this does not).
+     5. Quick Capture (v1.1) — screenshot / photo / PDF / dictated text
+        from the phone → Claude reads it → coach reviews → saved. OHM Run
+        feeds the sprint F-V profile; the OHM pull unit is kept separate.
 
    EVIDENCE GRADES:  A = meta-analysis / RCT / clinical guideline
                      B = consensus or single trial
@@ -5556,7 +5559,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'1.0'};
+const RX={ver:'1.1'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -6363,7 +6366,245 @@ RX.ROSTER=[
    profileNotes:'Completed a 6-week OHM Constant Force block. Fatigue-resistant and force-building.'}
 ];
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing + audit + roster merge','color:#7aa2c4');
+/* ═══════════════ SECTION 12 — QUICK CAPTURE (phone → Coach OS) ══════════
+   iOS home-screen apps can't sit in the share sheet, so capture happens
+   inside the app: screenshot / photo of the OHM screen, VALD result,
+   timing app, a PDF, or dictated text (keyboard mic) → Claude reads it →
+   coach reviews every item → saved to the right athlete.
+   OHM Run (sprint) feeds the existing F-V profile via logOhmSession.
+   OHM pull (deadlift unit) is stored separately in ath.ohmPull so it
+   never contaminates the sprint profile. */
+
+const CAP={};
+RX.cap=CAP;
+
+CAP.VALD_KEYS=['cmj','cmj_pct','dj_rsi','dj_pct','hop_rsi','hop_pct','sl_hop_l','sl_hop_r','sl_hop_asym',
+  'sl_jump_l_cm','sl_jump_r_cm','sl_jump_asym_pct','sl_jump_asym_side','hop_force','hop_force_pct',
+  'ham_iso_l','ham_iso_r','nf','bw','trap','bj','vj'];
+CAP.TIMING_MAP={'10yd':'spd','10 yd':'spd','5-10-5':'cod','pro agility':'pro_agility','fly10':'fly10','fly 10':'fly10',
+  'fly20':'fly20','flying 20':'fly20','40yd':'sprint40','40 yd':'sprint40','top speed':'top_speed_mph'};
+
+CAP.PROMPT='You read coaching data captured on a phone at a youth sports performance gym. Sources can be: '
+ +'OHM Run resisted-sprint trainer screens or notes ("run"), the OHM deadlift/pull unit ("pull"), VALD ForceDecks/NordBord results, laser/timing-gate apps, or free-text coach notes. '
+ +'OHM conventions: resistance level 4 = heavy/force end, 6 = mid, 8 = light/velocity end; when two numbers are written like "478/527" the first is AVG watts, the second is PEAK watts. '
+ +'Return ONLY JSON: {"items":[{"athlete":"name as written or null","date":"YYYY-MM-DD or null","kind":"ohm|vald|timing|note",'
+ +'"ohm":{"device":"run|pull","level":4,"lbs":null,"reps":[{"avgW":0,"peakW":0}]},'
+ +'"vald":{/* only these keys, numbers: '+CAP.VALD_KEYS.join(', ')+' (sl_jump_asym_side is "Left" or "Right"; cmj in cm) */},'
+ +'"timing":{"test":"10yd|5-10-5|pro agility|fly10|fly20|40yd|top speed","value":0},'
+ +'"note":"short factual note","confidence":"high|medium|low"}]}. '
+ +'One item per athlete per measurement type. Never invent numbers; omit what you cannot read.';
+
+CAP.matchAth=function(name){
+  if(!name)return null;
+  const n=norm(name), parts=String(name).toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+  return S.athletes.find(a=>norm(a.first+a.last)===n)
+    ||S.athletes.find(a=>parts.length>1&&norm(a.first)===parts[0]&&norm(a.last).startsWith(parts[parts.length-1].slice(0,1)))
+    ||(S.athletes.filter(a=>norm(a.first)===parts[0]).length===1?S.athletes.find(a=>norm(a.first)===parts[0]):null);
+};
+
+CAP.readFile=function(f){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>res(String(e.target.result));
+    r.onerror=()=>rej(new Error('Could not read '+f.name));
+    r.readAsDataURL(f);
+  });
+};
+// shrink phone photos (4000px) so the request stays small; skip if no canvas
+CAP.shrink=function(dataUrl,max){
+  max=max||1600;
+  return new Promise(res=>{
+    try{
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          const k=Math.min(1,max/Math.max(img.width,img.height));
+          if(k>=1){res(dataUrl);return;}
+          const c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+          const ctx=c.getContext&&c.getContext('2d'); if(!ctx){res(dataUrl);return;}
+          ctx.drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.85));
+        }catch(e){res(dataUrl);}
+      };
+      img.onerror=()=>res(dataUrl);
+      img.src=dataUrl;
+      setTimeout(()=>res(dataUrl),4000);
+    }catch(e){res(dataUrl);}
+  });
+};
+
+CAP.buildContent=async function(files,text,athHint){
+  const content=[];
+  for(const f of (files||[])){
+    let url=await CAP.readFile(f);
+    const type=(f.type||'').toLowerCase();
+    if(type==='application/pdf'){
+      content.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:url.split(',')[1]}});
+    }else if(/^image\//.test(type)){
+      if(!/image\/(jpeg|png|gif|webp)/.test(type)||f.size>1500000)url=await CAP.shrink(url);
+      const mt=(url.match(/^data:([^;]+);/)||[])[1]||'image/jpeg';
+      if(!/image\/(jpeg|png|gif|webp)/.test(mt))throw new Error(f.name+': unsupported image type (HEIC? take a screenshot instead)');
+      content.push({type:'image',source:{type:'base64',media_type:mt,data:url.split(',')[1]}});
+    }
+  }
+  const roster=S.athletes.map(a=>an(a).trim()).join(', ');
+  content.push({type:'text',text:CAP.PROMPT+'\nToday is '+today()+'.\nRoster names: '+roster
+    +(athHint?'\nIf no athlete name is visible, the athlete is: '+athHint:'')
+    +(text?'\n\nCOACH TEXT:\n'+text:'')});
+  return content;
+};
+
+CAP.parse=async function(files,text,athHint){
+  if(typeof _apiKey!=='undefined'&&!_apiKey)throw new Error('Set API key first');
+  const content=await CAP.buildContent(files,text,athHint);
+  const res=await apiFetch({max_tokens:3000,messages:[{role:'user',content}]});
+  const d=await res.json();
+  if(d.error)throw new Error(d.error.message||'API error');
+  const raw=(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  const obj=(typeof parseJSONLoose==='function'?parseJSONLoose(raw):null)||JSON.parse(raw);
+  const items=(obj&&obj.items)||[];
+  return items.map(it=>{
+    const a=CAP.matchAth(it.athlete)||(athHint?CAP.matchAth(athHint):null);
+    return Object.assign({},it,{athId:a?a.id:''});
+  });
+};
+
+CAP.describe=function(it){
+  if(it.kind==='ohm'&&it.ohm){
+    const o=it.ohm, reps=(o.reps||[]).map(r=>(r.avgW!=null?r.avgW:'?')+'/'+(r.peakW!=null?r.peakW:'?')).join(', ');
+    return 'OHM '+(o.device==='pull'?'pull':'run')+(o.level?' L'+o.level:'')+(o.lbs?' '+o.lbs+' lb':'')+': '+(reps||'no reps read');
+  }
+  if(it.kind==='vald'&&it.vald)return 'VALD: '+Object.entries(it.vald).filter(([k])=>CAP.VALD_KEYS.includes(k)).map(([k,v])=>k+' '+v).join(', ');
+  if(it.kind==='timing'&&it.timing)return 'Timing: '+it.timing.test+' '+it.timing.value;
+  return 'Note: '+(it.note||'');
+};
+
+CAP.save=function(items){
+  let n=0;const touched=new Set();
+  (items||[]).forEach(it=>{
+    const ath=S.athletes.find(a=>a.id===it.athId); if(!ath)return;
+    const date=/^\d{4}-\d{2}-\d{2}$/.test(it.date||'')?it.date:today();
+    if(!S.sessions[ath.id])S.sessions[ath.id]=[];
+    const updates={};
+    if(it.kind==='ohm'&&it.ohm){
+      const o=it.ohm, reps=(o.reps||[]).filter(r=>r&&(r.avgW!=null||r.peakW!=null));
+      if(!reps.length)return;
+      if(o.device==='pull'){
+        if(!ath.ohmPull)ath.ohmPull=[];
+        reps.forEach((r,i)=>ath.ohmPull.push({date,level:o.level||null,lbs:o.lbs||null,rep:i+1,avgW:r.avgW!=null?+r.avgW:null,peakW:r.peakW!=null?+r.peakW:null}));
+      }else if(typeof logOhmSession==='function'&&[4,6,8].includes(+o.level)){
+        reps.forEach((r,i)=>logOhmSession(ath.id,+o.level,r.avgW,r.peakW,1,'capture rep '+(i+1)+(o.lbs?' @ '+o.lbs+' lb':'')));
+      }else{
+        if(!ath.ohmRunOther)ath.ohmRunOther=[];
+        reps.forEach((r,i)=>ath.ohmRunOther.push({date,level:o.level||null,lbs:o.lbs||null,rep:i+1,avgW:r.avgW,peakW:r.peakW}));
+      }
+      S.sessions[ath.id].push({date,notes:'Captured '+CAP.describe(it),updates:{}});
+    }else if(it.kind==='vald'&&it.vald){
+      if(!ath.vald)ath.vald={};
+      Object.entries(it.vald).forEach(([k,v])=>{
+        if(!CAP.VALD_KEYS.includes(k)||v==null||v==='')return;
+        const val=k==='sl_jump_asym_side'?String(v):parseFloat(v);
+        if(k!=='sl_jump_asym_side'&&isNaN(val))return;
+        ath.vald[k]=val;updates[k]=val;
+      });
+      if(!Object.keys(updates).length)return;
+      if(updates.sl_jump_asym_pct!=null){ath.vald.asy=updates.sl_jump_asym_pct;}
+      if(updates.sl_jump_asym_side){ath.vald.asys=updates.sl_jump_asym_side;}
+      if(updates.dj_rsi!=null)ath.vald.rsi=updates.dj_rsi;
+      ath.vald.test_date=date;
+      S.sessions[ath.id].push({date,notes:'Captured '+CAP.describe(it),updates});
+    }else if(it.kind==='timing'&&it.timing){
+      const key=CAP.TIMING_MAP[String(it.timing.test||'').toLowerCase().trim()];
+      const v=parseFloat(it.timing.value);
+      if(!key||isNaN(v))return;
+      if(!ath.vald)ath.vald={};
+      ath.vald[key]=v;updates[key]=v;
+      S.sessions[ath.id].push({date,notes:'Captured '+CAP.describe(it),updates});
+    }else if(it.note){
+      S.sessions[ath.id].push({date,notes:String(it.note),updates:{}});
+    }else return;
+    n++;touched.add(ath.id);
+  });
+  touched.forEach(id=>{if(typeof _captureMetricSnapshot==='function'){try{_captureMetricSnapshot(id);}catch(e){}}});
+  if(!S.captures)S.captures=[];
+  S.captures.push({at:new Date().toISOString(),saved:n});
+  if(S.captures.length>50)S.captures=S.captures.slice(-50);
+  save();
+  return n;
+};
+
+CAP.open=function(){
+  let m=document.getElementById('rx-cap-modal');
+  if(!m){m=document.createElement('div');m.id='rx-cap-modal';m.className='mo';document.body.appendChild(m);}
+  const opts='<option value="">Auto-detect from content</option>'+S.athletes.map(a=>'<option value="'+esc(an(a))+'">'+esc(an(a))+'</option>').join('');
+  m.innerHTML='<div class="modal" style="max-width:560px;"><div class="m-hdr"><div class="m-title">QUICK CAPTURE</div><div class="m-close" onclick="RX.cap.close()">&#10005;</div></div>'
+    +'<div class="fg"><label>Athlete</label><select id="cap-ath" style="font-size:14px;padding:7px 10px;">'+opts+'</select></div>'
+    +'<div class="fg"><label>Screenshots, photos, or PDFs (OHM screen, VALD result, timing app)</label>'
+    +'<input id="cap-files" type="file" accept="image/*,application/pdf" multiple style="font-size:13px;"></div>'
+    +'<div class="fg"><label>Or type / dictate (tap the keyboard mic)</label><textarea id="cap-text" placeholder="e.g. Maeve OHM run L8 524/585, 493/615. Noelle 10yd 1.91" style="width:100%;min-height:70px;font-size:13px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--r,6px);padding:8px;"></textarea></div>'
+    +'<div id="cap-out" style="font-size:12px;"></div>'
+    +'<div class="m-foot"><button class="btn" onclick="RX.cap.close()">Close</button><button class="btn btn-primary" id="cap-go" onclick="RX.cap.run()">Read it</button></div></div>';
+  m.classList.add('open');m.style.display='flex';
+};
+CAP.close=function(){const m=document.getElementById('rx-cap-modal');if(m){m.classList.remove('open');m.style.display='none';}};
+
+CAP.run=async function(){
+  const out=document.getElementById('cap-out'), btn=document.getElementById('cap-go');
+  const files=[...((document.getElementById('cap-files')||{}).files||[])];
+  const text=((document.getElementById('cap-text')||{}).value||'').trim();
+  const hint=(document.getElementById('cap-ath')||{}).value||'';
+  if(!files.length&&!text){out.innerHTML='<span style="color:var(--orange);">Add a screenshot or some text first.</span>';return;}
+  btn.disabled=true;btn.textContent='Reading...';out.innerHTML='<span style="color:var(--text3);">Reading with Claude...</span>';
+  try{
+    CAP._items=await CAP.parse(files,text,hint);
+    CAP.renderReview();
+  }catch(e){out.innerHTML='<span style="color:var(--red);">'+esc(e.message)+'</span>';}
+  btn.disabled=false;btn.textContent='Read it';
+};
+
+CAP.renderReview=function(){
+  const out=document.getElementById('cap-out'); if(!out)return;
+  const items=CAP._items||[];
+  if(!items.length){out.innerHTML='<span style="color:var(--orange);">Nothing readable found.</span>';return;}
+  const athOpts=cur=>'<option value="">— pick athlete —</option>'+S.athletes.map(a=>'<option value="'+a.id+'"'+(a.id===cur?' selected':'')+'>'+esc(an(a))+'</option>').join('');
+  out.innerHTML='<div style="color:var(--text2);margin:6px 0;">Check every line before saving. Unchecked lines are ignored.</div>'
+    +items.map((it,i)=>'<div style="border-top:1px solid var(--border);padding:7px 0;display:flex;gap:8px;align-items:flex-start;">'
+      +'<input type="checkbox" data-ci="'+i+'" '+(it.athId&&it.confidence!=='low'?'checked':'')+'>'
+      +'<div style="flex:1;"><select data-ca="'+i+'" style="font-size:13px;padding:5px 8px;margin-bottom:4px;">'+athOpts(it.athId)+'</select>'
+      +'<div>'+esc(CAP.describe(it))+'</div>'
+      +'<div style="font-size:10px;color:'+(it.confidence==='low'?'var(--orange)':'var(--text3)')+';">'+esc((it.date||today())+' · read as "'+(it.athlete||'?')+'" · confidence '+(it.confidence||'?'))+'</div></div></div>').join('')
+    +'<button class="btn btn-primary" style="margin-top:8px;width:100%;" onclick="RX.cap.confirm()">Save checked</button>';
+};
+
+CAP.confirm=function(){
+  const out=document.getElementById('cap-out'); if(!out)return;
+  const pick=[];
+  out.querySelectorAll('input[data-ci]').forEach(cb=>{
+    if(!cb.checked)return;
+    const i=+cb.dataset.ci, sel=out.querySelector('select[data-ca="'+i+'"]');
+    const it=Object.assign({},CAP._items[i],{athId:sel?sel.value:CAP._items[i].athId});
+    if(it.athId)pick.push(it);
+  });
+  const n=CAP.save(pick);
+  if(typeof toast==='function')toast('Saved '+n+' item'+(n===1?'':'s'));
+  out.innerHTML='<span style="color:var(--accent);">Saved '+n+' item'+(n===1?'':'s')+'.</span>';
+  const f=document.getElementById('cap-files'); if(f)f.value='';
+  const t=document.getElementById('cap-text'); if(t)t.value='';
+  if(S.selAth&&typeof showAthDetail==='function'&&document.getElementById('ath-detail')){try{showAthDetail(S.selAth);}catch(e){}}
+};
+
+function mountCapture(){
+  if(document.getElementById('rx-cap-fab'))return;
+  const b=document.createElement('button');
+  b.id='rx-cap-fab';b.type='button';b.textContent='+ Capture';b.setAttribute('aria-label','Quick capture');
+  b.style.cssText='position:fixed;right:14px;bottom:calc(72px + env(safe-area-inset-bottom, 0px));z-index:900;'
+    +'padding:10px 14px;border-radius:22px;border:1px solid var(--border2);background:var(--bg2);color:var(--text);'
+    +'font-size:12px;letter-spacing:.3px;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;';
+  b.onclick=()=>CAP.open();
+  document.body.appendChild(b);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountCapture);else mountCapture();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing + audit + roster merge + quick capture','color:#7aa2c4');
 })();
 
 </script>
