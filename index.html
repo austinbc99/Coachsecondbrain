@@ -641,8 +641,7 @@ async function vpdfProcess(file){if(!_apiKey){toast('Set API key first');return;
 function saveValdEntry(){const sel=document.getElementById('ve-sel'),isNew=sel.value==='_new';const g=id=>document.getElementById(id)&&document.getElementById(id).value.trim()||'';const gn=id=>{const v=parseFloat(g(id));return isNaN(v)?undefined:v;};let ath;if(isNew){const first=g('ve-first'),last=g('ve-last');if(!first||!last){toast('Name required');return;}ath={id:uid(),first,last,sport:g('ve-sport'),position:g('ve-pos'),age:'',status:'Active',notes:'',vald:{}};S.athletes.push(ath);}else{ath=S.athletes.find(a=>a.id===sel.value);if(!ath)return;if(!ath.vald)ath.vald={};}['cmj','rsi','asy','nf','trap','spd','vj','bj','bw'].forEach(k=>{const n=gn('ve-'+k);if(n!==undefined)ath.vald[k]=n;});const asys=g('ve-asys');if(asys)ath.vald.asys=asys;const note=g('ve-note');if(note){if(!S.sessions[ath.id])S.sessions[ath.id]=[];S.sessions[ath.id].push({date:today(),notes:note,updates:{}});}S.selAth=ath.id;save();renderValdSummary();populateReportSel();initVald();toast('Saved: '+an(ath));}
 function renderValdSummary(){const el=document.getElementById('vald-summary');if(!el)return;const wd=S.athletes.filter(a=>Object.values(a.vald||{}).some(x=>x!==undefined)).length;el.innerHTML='<div class="g2"><div class="st"><div class="st-l">Athletes</div><div class="st-v">'+S.athletes.length+'</div></div><div class="st"><div class="st-l">With Data</div><div class="st-v">'+wd+'</div></div></div>';}
 function populateReportSel(){const s=document.getElementById('vald-rep-sel');if(!s)return;s.innerHTML='<option value="">Select...</option>'+S.athletes.map(a=>'<option value="'+a.id+'">'+an(a)+'</option>').join('');}
-function downloadReportCard(){const id=document.getElementById('vald-rep-sel').value;if(!id){toast('Select athlete');return;}const ath=S.athletes.find(a=>a.id===id);if(!ath)return;const m=getMetrics(ath);const rows=Object.entries(m).filter(([k,v])=>v!==undefined&&v!==null).map(([k,v])=>'<tr><td style="padding:8px 12px;color:#aaa;">'+k.toUpperCase()+'</td><td style="padding:8px 12px;color:#00e5a0;font-weight:700;">'+v+'</td></tr>').join('');const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+an(ath)+'</title><style>body{margin:0;background:#090909;color:#efefef;font-family:ui-monospace,monospace;padding:32px;max-width:780px;margin:0 auto;}h1{font-family:\'IBM Plex Mono\',sans-serif;color:#00e5a0;font-size:32px;letter-spacing:2px;}.sub{color:#555;font-size:10px;margin-bottom:24px;}table{width:100%;border-collapse:collapse;background:#111;}td{border-bottom:1px solid #1a1a1a;}</style></head><body><h1>'+an(ath)+'</h1><div class="sub">'+ath.sport+' &middot; '+ath.position+' &middot; '+new Date().toLocaleDateString()+'</div><table>'+rows+'</table><div style="margin-top:30px;color:#333;font-size:9px;">FitClub CT &middot; Austin Cardona, CAT</div><script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(function(){});}</script>
-</body></html>';const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=an(ath).replace(/\s+/g,'-').toLowerCase()+'-report.html';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);toast('Downloaded');}
+function downloadReportCard(){const id=document.getElementById('vald-rep-sel').value;if(!id){toast('Select athlete');return;}const ath=S.athletes.find(a=>a.id===id);if(!ath)return;const m=getMetrics(ath);const rows=Object.entries(m).filter(([k,v])=>v!==undefined&&v!==null).map(([k,v])=>'<tr><td style="padding:8px 12px;color:#aaa;">'+k.toUpperCase()+'</td><td style="padding:8px 12px;color:#00e5a0;font-weight:700;">'+v+'</td></tr>').join('');const html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+an(ath)+'</title><style>body{margin:0;background:#090909;color:#efefef;font-family:ui-monospace,monospace;padding:32px;max-width:780px;margin:0 auto;}h1{font-family:\'IBM Plex Mono\',sans-serif;color:#00e5a0;font-size:32px;letter-spacing:2px;}.sub{color:#555;font-size:10px;margin-bottom:24px;}table{width:100%;border-collapse:collapse;background:#111;}td{border-bottom:1px solid #1a1a1a;}</style></head><body><h1>'+an(ath)+'</h1><div class="sub">'+ath.sport+' &middot; '+ath.position+' &middot; '+new Date().toLocaleDateString()+'</div><table>'+rows+'</table><div style="margin-top:30px;color:#333;font-size:9px;">Coach Austin C., ATC &middot; Head Coach, FitClub CT</div></body></html>';const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=an(ath).replace(/\s+/g,'-').toLowerCase()+'-report.html';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);toast('Downloaded');}
 function downloadValdCSV(){if(!S.athletes.length){toast('No athletes');return;}const cols=['Name','Sport','Position','Age','Status','CMJ','RSI','Asym%','Side','Nordic','Trap','Speed','VJ','Broad','BW'];const esc=v=>{const s=String(v||'');return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};const rows=[cols.join(',')];S.athletes.forEach(a=>{const v=a.vald||{};rows.push([an(a),a.sport,a.position,a.age,a.status,v.cmj,v.rsi,v.asy,v.asys,v.nf,v.trap,v.spd,v.vj,v.bj,v.bw].map(esc).join(','));});const blob=new Blob([rows.join('\r\n')],{type:'text/csv'});const l=document.createElement('a');l.href=URL.createObjectURL(blob);l.download='fitclubct-'+today()+'.csv';document.body.appendChild(l);l.click();setTimeout(()=>{URL.revokeObjectURL(l.href);l.remove();},500);toast('CSV exported');}
 const MG={sprint:{label:'Sprint',moves:[{id:'accel',label:'Acceleration',focus:'Shin angles, body projection, arm drive'},{id:'maxvel',label:'Max Velocity',focus:'Upright torso, high front-side mechanics, ankle stiffness'},{id:'general',label:'General Sprint',focus:'Overall mechanics'}]},cod:{label:'COD',moves:[{id:'cut45',label:'45 Degree Cut',focus:'Body lean, outside foot plant'},{id:'cut90',label:'90 Degree Cut',focus:'Hard plant, low COM'},{id:'turn180',label:'180 Turn',focus:'Decel, plant, re-accelerate'}]},jump:{label:'Jump',moves:[{id:'cmj',label:'CMJ',focus:'CM depth, arm swing, triple extension'},{id:'slcmj',label:'Single Leg CMJ',focus:'Stability, hip dominant'},{id:'dropjump',label:'Drop Jump',focus:'Brief contact, ankle stiffness'}]},strength:{label:'Strength',moves:[{id:'trapbar',label:'Trap Bar DL',focus:'Hip hinge, neutral spine'},{id:'backsquat',label:'Back Squat',focus:'Depth, knee tracking'},{id:'rdl',label:'RDL',focus:'Hip hinge, soft knees'},{id:'slrdl',label:'Single Leg RDL',focus:'Hip square, balance'}]}};
 let _filmImgs=[],_filmCat='sprint';
@@ -2745,6 +2744,8 @@ window.genProgram=async function(resumeAthId){
     loading:document.getElementById('prog-loading').value,
     goal:document.getElementById('prog-goal').value,
     days:parseInt(document.getElementById('prog-days').value)||3,
+    season:document.getElementById('prog-season')?document.getElementById('prog-season').value:'',
+    sessionLen:document.getElementById('prog-sesslen')?document.getElementById('prog-sesslen').value:'',
     constraints:document.getElementById('prog-constraints').value.trim()||ath.notes||'',
     equip:(_progEquip&&_progEquip.length)?_progEquip:EQUIPMENT
   };
@@ -2762,7 +2763,7 @@ window.genProgram=async function(resumeAthId){
     weeksData=[]; startWeek=1;
     S.programs[athId]={
       athId,athName:an(ath),generated:today(),
-      weeks:totalWeeks,phase:'Triphasic',goal:opts.goal,
+      weeks:totalWeeks,phase:'Triphasic',goal:opts.goal,season:opts.season||null,
       loading:opts.loading,edited:false,actuals:{},
       primaryGoals:['Build per week'],valdFlags:[],
       weeks_data:[],valdSnapshot,_genState:{totalWeeks,opts,retestWeeks,inProgress:true}
@@ -5515,6 +5516,854 @@ if(typeof pageInits!=='undefined'&&pageInits.dash){
 if(S&&S.page==='dash'){try{complianceCard();}catch(e){}}
 
 console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance','color:#7aa2c4');
+})();
+
+</script>
+
+<script data-src="evidence-dropin.js">
+/* ═══════════════════════════════════════════════════════════════════════
+   COACH OS — EVIDENCE LAYER DROP-IN  v1.0
+   Coach Austin C., ATC · Head Coach, FitClub CT
+
+   LOAD ORDER: LAST (after performance-dropin.js).
+
+   WHAT IT DOES
+     1. Research dosing → prompt. Every generated week gets hard numbers
+        for THIS athlete (maturity, training age, season, sex, sport):
+        plyo contact caps, sprint exposure minimums, strength set/rep/
+        intensity ranges, NMT warm-up dose, Nordic + Copenhagen dose,
+        COD angle progression, conditioning format.
+     2. Generate-then-audit. After generation, every week is checked
+        against the same rules in code (not "asked nicely"): block order,
+        plyo contact caps, weekly sprint exposure, Nordic / Copenhagen
+        minimums, NMT content in warm-ups, in-season primary set caps,
+        weekly volume spikes. Fixes are applied ONLY to weeks that have
+        no logged actuals / check-offs, so logging keys never shift.
+        Injury governance (PB.screenProgram) re-runs after, so an ATC
+        constraint always wins over an inserted exercise.
+     3. Evidence profile per athlete (sex, training age, maturity, goals,
+        profile notes that are NOT injury constraints).
+     4. Roster merge — adds / fills athletes without ever overwriting a
+        value already in the app (Backup→Import replaces everything;
+        this does not).
+
+   EVIDENCE GRADES:  A = meta-analysis / RCT / clinical guideline
+                     B = consensus or single trial
+                     C = practitioner default — coach may override
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
+window.__rxLoaded=true;
+
+const RX={ver:'1.0'};
+window.RX=RX;
+
+/* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
+
+RX.SRC={
+  steib:   {g:'A',t:'Steib 2017, Front Physiol — NMT dose-response (10–15 min/session, 2–3×/wk; 1×/wk not significant)'},
+  arundale:{g:'A',t:'Arundale 2023, JOSPT clinical practice guideline — ACL prevention (>20 min, ≥30 min/wk, preseason + in-season)'},
+  steffen: {g:'B',t:'Steffen 2013, BJSM — FIFA 11+ adherence (~2.2×/wk vs ~1.8×/wk → 72% fewer injuries)'},
+  lloyd:   {g:'B',t:'Lloyd 2016, NSCA LTAD position statement — maturity-based emphasis'},
+  cumming: {g:'B',t:'Cumming 2017, SCJ — bio-banding / %PAH maturity bands'},
+  faigen:  {g:'A',t:'Faigenbaum 2009 JSCR; Lloyd 2014 BJSM — youth resistance training consensus'},
+  lesinski:{g:'A',t:'Lesinski 2016, BJSM — youth strength dose (trained: 5×6–8 @80–89%)'},
+  ronnest: {g:'B',t:'Rønnestad 2011, JSCR — 1 heavy session/wk maintains strength + sprint in-season'},
+  ramirez: {g:'A',t:'Ramirez-Campillo 2023, Sports Med Open — youth plyo minimum effective dose (~8 sessions, ~92 jumps/wk)'},
+  watkins: {g:'C',t:'Watkins 2021, JSCR — practitioner plyo volumes (most ≤40 contacts/session)'},
+  devill:  {g:'A',t:'de Villarreal 2009, JSCR — 2×/wk plyo ≈ 4×/wk'},
+  haugen:  {g:'C',t:'Haugen 2019, Sports Med Open — sprint training: ≥95% intent, ≥48 h between max sessions, ~2% timing noise'},
+  buchheit:{g:'C',t:'Buchheit 2023, Biol Sport — weekly ≥95% max-velocity exposure, MD-2 placement'},
+  dossant: {g:'B',t:'Dos\'Santos 2018 Sports Med; 2021 Sports — COD angle–velocity trade-off, 45°→90°→180° progression'},
+  cuthbert:{g:'A',t:'Cuthbert 2020, Sports Med — low-volume Nordics as effective as high volume (≥6 wk)'},
+  haroy:   {g:'A',t:'Harøy 2019, BJSM — Copenhagen adductor: 41% fewer groin problems (male players)'},
+  thurlow: {g:'A',t:'Thurlow 2024, Sports Med — repeated-sprint training design'},
+  buchlaur:{g:'B',t:'Buchheit & Laursen 2013, Sports Med — HIIT formats (short intervals 15/15)'},
+  gabbett: {g:'C',t:'Gabbett 2016 BJSM (+ Impellizzeri 2020 critique) — avoid week-to-week spikes; soft flag only'},
+  hopkins: {g:'A',t:'Hopkins 2000, Sports Med — typical error / smallest worthwhile change'},
+  bishop:  {g:'B',t:'Bishop 2018/2026 — asymmetry thresholds are convention, test-specific; confirm on repeat tests'},
+  slplyo:  {g:'B',t:'Front Physiol 2025 meta-analysis — single-leg plyometrics reduce inter-limb asymmetry'},
+  mcnulty: {g:'A',t:'McNulty 2020, Sports Med — menstrual phase effect trivial/low quality; adjust to symptoms, not phase'},
+  mountjoy:{g:'A',t:'Mountjoy 2023, BJSM — REDs consensus: flag and refer, never prescribe diets'},
+  harries: {g:'A',t:'Harries 2015 JSAMS; Moesgaard 2022 Sports Med — linear ≈ undulating in youth/untrained'},
+  rumpf:   {g:'B',t:'Rumpf 2012, Pediatr Exerc Sci — pre-PHV respond to sprint/plyo; post-PHV add strength'}
+};
+
+/* ═══════════════ SECTION 2 — ATHLETE CONTEXT ════════════════════════════ */
+
+const FIELD_SPORTS=/soccer|lacrosse|field hockey|hockey|rugby|football|basketball/i;
+
+RX.sex=function(ath){
+  const s=String((ath&&ath.sex)||'').trim().toUpperCase();
+  return s.startsWith('F')?'F':s.startsWith('M')?'M':'';
+};
+
+/* Maturity. Manual value wins (coach measured %PAH / Khamis-Roche).
+   Otherwise a COARSE age band: girls reach PHV ~11–13, boys ~13–15
+   (Wik 2022). Unknown sex uses the male bands — circa-PHV lasts longer
+   there, which is the conservative direction. */
+RX.maturity=function(ath){
+  const man=String((ath&&ath.maturity)||'').toLowerCase();
+  if(/pre|circa|post/.test(man)){
+    return {stage:man.match(/pre|circa|post/)[0],estimated:false};
+  }
+  const age=parseFloat(ath&&ath.age);
+  if(isNaN(age))return {stage:'unknown',estimated:true};
+  const f=RX.sex(ath)==='F';
+  let stage;
+  if(f)stage=age<=11?'pre':age<=13?'circa':'post';
+  else stage=age<=12?'pre':age<=15?'circa':'post';
+  return {stage,estimated:true};
+};
+
+/* Training age: manual wins; otherwise inferred from logged history. */
+RX.level=function(ath){
+  const man=String((ath&&ath.trainingAge)||'').toLowerCase();
+  if(/novice|intermediate|advanced/.test(man))return {level:man.match(/novice|intermediate|advanced/)[0],estimated:false};
+  const p=(typeof S!=='undefined'&&S.programs&&ath)?S.programs[ath.id]:null;
+  let logged=0;
+  if(p&&p.loadHistory)Object.values(p.loadHistory).forEach(h=>{logged+=(h||[]).length;});
+  const age=parseFloat(ath&&ath.age);
+  if(logged>=60)return {level:'intermediate',estimated:true};
+  if(!isNaN(age)&&age<14)return {level:'novice',estimated:true};
+  return {level:logged>=15?'intermediate':'novice',estimated:true};
+};
+
+RX.season=function(ath,opts){
+  const o=(opts&&opts.season)||'';
+  if(o)return o;
+  const p=(typeof S!=='undefined'&&S.programs&&ath)?S.programs[ath.id]:null;
+  if(p&&p.season)return p.season;
+  const st=String((ath&&ath.status)||'');
+  if(/in-season/i.test(st))return 'In-Season';
+  if(/off-season/i.test(st))return 'Off-Season';
+  return 'Off-Season';
+};
+
+RX.ctx=function(ath,opts){
+  const mat=RX.maturity(ath),lvl=RX.level(ath);
+  return {
+    sex:RX.sex(ath),
+    age:parseFloat(ath&&ath.age),
+    stage:mat.stage, stageEst:mat.estimated,
+    level:lvl.level, levelEst:lvl.estimated,
+    season:RX.season(ath,opts),
+    field:FIELD_SPORTS.test((ath&&ath.sport)||''),
+    days:parseInt(opts&&opts.days)||3,
+    sessionLen:parseInt(opts&&opts.sessionLen)||0
+  };
+};
+
+/* ═══════════════ SECTION 3 — DOSE TABLE ═════════════════════════════════
+   One function, one place to change numbers. */
+
+RX.dose=function(c){
+  const inS=c.season==='In-Season', pre=c.season==='Pre-Season';
+  const L={novice:0,intermediate:1,advanced:2}[c.level]||0;
+
+  // PLYO — contacts per session (Watkins [C] practitioner reality; Ramirez-Campillo [A] MED)
+  let plyoSess=[40,60,80][L];
+  if(inS)plyoSess=[25,35,50][L];
+  else if(pre)plyoSess=[35,50,70][L];
+  if(c.stage==='circa')plyoSess=Math.round(plyoSess*0.75);   // Johnson 2020 / Lloyd 2016 [B/C]
+  const plyoWeekMin=inS?0:Math.min(90,plyoSess*Math.min(2,c.days)); // ~92/wk MED, when ≥2 days
+
+  // STRENGTH (Faigenbaum/Lloyd [A], Lesinski [A], Rønnestad [B])
+  const str=[
+    {sets:'2-3',reps:'6-10',int:'60-70% (RPE 6-7)',rest:'90-120s'},
+    {sets:'3-4',reps:'4-8', int:'70-85% (RPE 7-8)',rest:'2-3 min'},
+    {sets:'3-5',reps:'3-6', int:'80-89% (RPE 7-9)',rest:'3-4 min'}
+  ][L];
+  const primarySetCap=inS?6:(pre?9:12);                        // per session, all Primary Strength sets
+  const inSeasonHeavy=inS?'At least ONE heavy exposure per week: 2-3 sets x 3-5 @ ~80-85% (RPE <=8), low volume, explosive intent, nothing that leaves next-day soreness.':'';
+
+  // SPRINT (Haugen [C], Buchheit [C])
+  const sprintMin=1;
+
+  // NMT (Steib [A], Arundale [A], Steffen [B])
+  const nmtMin=c.days>=3?12:c.days===2?15:18;
+  const nmtGap=c.days<2;   // 1x/wk NMT alone is not a protective dose
+
+  // NORDIC (Cuthbert [A]) + COPENHAGEN (Harøy [A])
+  const nordicMin=1;
+  const copenMin=c.field?1:0;
+  const copenTarget=c.field?(inS?1:Math.min(c.days,pre?3:2)):0;
+
+  // COD progression (Dos'Santos [B])
+  const cod=inS
+    ?'Maintain: short pre-planned + reactive cuts the athlete already owns; no new angles in-season.'
+    :(c.stage==='circa'||c.level==='novice')
+      ?'Weeks 1-2: decel-to-stick and 45° cuts, submax. Weeks 3-4: 90° cuts, speed up. 180° and reactive only after 4 clean weeks.'
+      :'Thirds of the block: 45° → 90° → 180° / reactive. Pre-planned before reactive. Slow → fast.';
+
+  // CONDITIONING (Thurlow [A], Buchheit & Laursen [B])
+  let cond;
+  if(!c.field)cond='Match the sport needs analysis above.';
+  else if(inS)cond='In-season: sport practice covers conditioning. Add none unless the athlete is not playing minutes.';
+  else if(pre)cond='Pre-season: repeated-sprint work 1-2x/wk, placed LAST. Default 6x30m / 20s passive; to keep sprint quality use 15-25m with >=30s.';
+  else cond='Off-season: aerobic base first, then short intervals (15s on/15s off near max aerobic speed) or small-sided games, 1-2x/wk, placed LAST.';
+
+  return {plyoSess,plyoWeekMin,str,primarySetCap,inSeasonHeavy,sprintMin,
+          nmtMin,nmtGap,nordicMin,copenMin,copenTarget,cod,cond};
+};
+
+/* ═══════════════ SECTION 4 — PROMPT BLOCK ═══════════════════════════════ */
+
+function weakSide(l,r){
+  l=parseFloat(l);r=parseFloat(r);
+  if(isNaN(l)||isNaN(r)||l===r)return null;
+  return {weak:l<r?'LEFT':'RIGHT',pct:Math.round(Math.abs(l-r)/Math.max(l,r)*1000)/10};
+}
+RX.weakSide=weakSide;
+
+RX.valdDetail=function(ath){
+  const v=(ath&&ath.vald)||{}, out=[];
+  const add=(lbl,val,u)=>{if(val!=null&&val!=='')out.push(lbl+' '+val+(u||''));};
+  add('CMJ',v.cmj,' cm');add('CMJ pct',v.cmj_pct);add('DJ RSI',v.dj_rsi);add('DJ pct',v.dj_pct);
+  add('SL hop RSI L',v.sl_hop_l);add('R',v.sl_hop_r);
+  add('SL jump L',v.sl_jump_l_cm,' cm');add('R',v.sl_jump_r_cm,' cm');
+  add('Hop-test peak force',v.hop_force,' N');add('pct',v.hop_force_pct);
+  add('Ham iso L',v.ham_iso_l,' N');add('R',v.ham_iso_r,' N');
+  add('10yd',v.spd,' s');add('5-10-5',v.cod,' s');add('Pro agility',v.pro_agility,' s');
+  add('BW',v.bw,' lb');add('Tested',v.test_date);
+  const sides=[];
+  const h=weakSide(v.sl_hop_l,v.sl_hop_r); if(h)sides.push('SL hop RSI weaker '+h.weak+' ('+h.pct+'%)');
+  const j=weakSide(v.sl_jump_l_cm,v.sl_jump_r_cm); if(j)sides.push('SL jump weaker '+j.weak+' ('+j.pct+'%)');
+  const k=weakSide(v.ham_iso_l,v.ham_iso_r); if(k)sides.push('hamstring iso weaker '+k.weak+' ('+k.pct+'%)');
+  return {line:out.join(', '),sides};
+};
+
+RX.promptBlock=function(ath,opts,wk,totalWeeks){
+  const c=RX.ctx(ath,opts), d=RX.dose(c), vd=RX.valdDetail(ath);
+  const L=[];
+  L.push('\n\n══ EVIDENCE LAYER v'+RX.ver+' — HARD DOSING FOR THIS ATHLETE (overrides any generic numbers above) ══');
+  L.push('CONTEXT: '+(c.sex==='F'?'female':c.sex==='M'?'male':'sex not recorded')
+    +', age '+(isNaN(c.age)?'?':c.age)
+    +', maturity '+c.stage+(c.stageEst?' (age-band estimate)':' (measured)')
+    +', training age '+c.level+(c.levelEst?' (estimated)':'')
+    +', '+c.season+', '+c.days+' day(s)/wk'+(c.sessionLen?', '+c.sessionLen+' min sessions':'')+'.');
+  if(ath.goals)L.push('COACH-STATED GOALS: '+ath.goals);
+  if(ath.profileNotes)L.push('COACH PROFILE NOTES (performance context, NOT injury constraints): '+ath.profileNotes);
+  if(ath.blockContext)L.push('CURRENT BLOCK CONTEXT: '+ath.blockContext);
+  if(vd.line)L.push('VALD DETAIL: '+vd.line+'.');
+  if(vd.sides.length)L.push('WEAKER SIDE BY TEST: '+vd.sides.join('; ')+'. Asymmetry thresholds are convention and test-specific — bias unilateral volume toward the weaker side (+1 set, weaker side first) and use single-leg plyometrics, which reduce asymmetry better than bilateral work.');
+
+  L.push('\nSESSION ORDER: NMT warm-up → Speed/COD → Plyo/Reactive → Primary Strength → Accessory → Conditioning. Fast work fresh, always.');
+  L.push('NMT WARM-UP (every session, ~'+d.nmtMin+' min): must contain landing mechanics (snapdown/stick, hop-and-stick), single-leg control, hip/trunk strength (band walks, side plank). Balance alone is not enough. Target >=30 min/wk total across sessions.'
+    +(d.nmtGap?' This athlete trains here only '+c.days+'x/wk — a 1x/wk NMT dose is not protective on its own, so add a "homework" string to the week object: a 10-12 min NMT routine for 2 team-practice days.':''));
+  L.push('PLYO: max '+d.plyoSess+' foot contacts per session'+(d.plyoWeekMin?', aim >= '+d.plyoWeekMin+' per week':'')
+    +'. Progress low → high intensity and bilateral → single-leg. Every plyo exercise object gets a numeric "contacts" field = total foot contacts (sets x reps, both legs counted).');
+  L.push('SPRINT: at least '+d.sprintMin+' exposure per week at >=95% intent (acceleration 10-30 m and/or flys with a build-up). Near-full recovery (~1 min per 10 m). End the set when times slow. Keep >=48 h between max-velocity sessions.'
+    +(c.season==='In-Season'?' In-season: place it ~2 days before the next game (MD-2), never the day before.':''));
+  L.push('COD: '+d.cod);
+  L.push('STRENGTH ('+c.level+'): primaries '+d.str.sets+' sets x '+d.str.reps+' reps @ '+d.str.int+', rest '+d.str.rest
+    +'. Cap: '+d.primarySetCap+' total Primary Strength sets per session. Add load 5-10% only when all reps are clean at target RPE.'
+    +(d.inSeasonHeavy?' '+d.inSeasonHeavy:''));
+  L.push('INJURY-PREVENTION MINIMUMS PER WEEK: Nordic hamstring >= '+d.nordicMin+'x (2-3 x 4-6, slow eccentric — low volume works)'
+    +(d.copenMin?'; Copenhagen adductor '+d.copenTarget+'x (short lever → long lever)':'')+'; hip abductor/glute med in every lower session.');
+  L.push('CONDITIONING: '+d.cond);
+  if(c.stage==='circa')L.push('CIRCA-PHV: reduce high-impact volume, keep strength, re-coach technique, watch for Osgood-Schlatter / Sever\'s-type soreness.');
+  if(c.sex==='F')L.push('FEMALE ATHLETE: do not periodize by menstrual phase — adjust to reported symptoms only. Never prescribe diets or calorie targets.');
+  L.push('LOAD: total weekly sets should not jump more than ~15% over last week (the retest/deload weeks are separate).');
+  L.push('Output will be audited in code against these numbers and corrected automatically.');
+  return L.join('\n');
+};
+
+if(typeof window.buildWeekPrompt==='function'){
+  const _rxPrevBWP=window.buildWeekPrompt;
+  window.buildWeekPrompt=function(wk,totalWeeks,ath,opts){
+    let base=_rxPrevBWP.apply(this,arguments);
+    try{base+=RX.promptBlock(ath,opts||{},wk,totalWeeks);}catch(e){console.warn('[RX] prompt block failed',e);}
+    return base;
+  };
+}
+
+/* ═══════════════ SECTION 5 — PARSERS / CLASSIFIERS ═════════════════════ */
+
+RX.num=function(s){
+  if(s==null)return 0;
+  if(typeof s==='number')return s;
+  const t=String(s);
+  const r=t.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+  if(r)return Math.round((parseFloat(r[1])+parseFloat(r[2]))/2);
+  const plus=t.match(/(\d+)\s*\+\s*(\d+)/);
+  if(plus)return parseInt(plus[1])+parseInt(plus[2]);
+  const m=t.match(/\d+(?:\.\d+)?/);
+  return m?parseFloat(m[0]):0;
+};
+const PER_SIDE=/\b(ea|each|per ?(leg|side)|\/ ?(leg|side)|e\/s|es|l\/r|each leg|each side)\b/i;
+
+const BLOCK_ORDER=['Movement Prep','Speed / COD','Plyo / Reactive','Primary Strength','Accessory','Conditioning'];
+RX.BLOCK_ORDER=BLOCK_ORDER;
+
+RX.blockOf=function(ex){
+  if(ex.block&&BLOCK_ORDER.includes(ex.block))return ex.block;
+  if(window.BLK&&typeof BLK.classify==='function')return BLK.classify(ex);
+  return 'Accessory';
+};
+
+const RE={
+  plyo:/jump|hop|bound|pogo|depth|drop|hurdle|skip(?!.*march)|rebound|snapdown/i,
+  sprint:/sprint|fly|flying|accel|acceleration|build.?up|resisted run|sled (sprint|push)|wicket|start/i,
+  nordic:/nordic/i,
+  copen:/copenhagen|adductor (plank|bridge|squeeze)|adductor side plank/i,
+  landing:/land|stick|snap.?down|hop.?and.?hold|nmt|11\+|pep/i,
+  lower:/lower|leg|squat|deadlift|dl\b|hinge|rdl|lunge|split/i,
+  uni:/single.?leg|\bsl\b|split|bulgarian|rfess|lunge|step.?up|b.?stance|kickstand|cossack|pistol|1.?leg|one.?leg|skater/i
+};
+RX.RE=RE;
+
+RX.contacts=function(ex){
+  const c=parseFloat(ex.contacts);
+  if(!isNaN(c)&&c>0)return c;
+  const sets=RX.num(ex.sets)||1, reps=RX.num(ex.reps)||0;
+  const mult=(PER_SIDE.test(String(ex.reps||''))||PER_SIDE.test(ex.name||''))?2:1;
+  return sets*reps*mult;
+};
+
+RX.isPlyo=function(ex){
+  const b=RX.blockOf(ex);
+  if(b==='Plyo / Reactive')return true;
+  if(b==='Movement Prep'||b==='Speed / COD'||b==='Primary Strength'||b==='Conditioning')return false;
+  return RE.plyo.test(ex.name||'')&&!/iso|hold|squat|curl|press|row/i.test(ex.name||'');
+};
+RX.isSprint=function(ex){
+  const b=RX.blockOf(ex);
+  return b==='Speed / COD'&&RE.sprint.test(ex.name||'')||(b!=='Conditioning'&&/\b(sprint|fly|flying)\b/i.test(ex.name||''));
+};
+RX.sessionIsLower=function(s){
+  if(RE.lower.test(s.type||''))return true;
+  return (s.exercises||[]).some(e=>RX.blockOf(e)==='Primary Strength'&&RE.lower.test(e.name||''));
+};
+
+/* ═══════════════ SECTION 6 — AUDIT (generate-then-check) ════════════════ */
+
+function weekLocked(p,wkNum){
+  const a=(p.actuals||{})['wk'+wkNum], d=(p.done||{})['wk'+wkNum];
+  return !!((a&&Object.keys(a).length)||(d&&Object.keys(d).length));
+}
+
+function relabelPairs(exs){
+  const map={};let next=0;
+  exs.forEach(ex=>{
+    if(RX.blockOf(ex)==='Movement Prep'){return;}
+    const m=String(ex.pair||'').match(/^([A-Z])(\d+)$/);
+    let key=m?m[1]:('_'+Math.random());
+    if(!(key in map)){map[key]=String.fromCharCode(65+Math.min(next,25));next++;}
+    ex.pair=map[key]+(m?m[2]:'1');
+  });
+}
+
+function mkEx(o){
+  return Object.assign({sets:'2',reps:'5',weight:'BW',rpe:'7',tempo:'—',rest:'90s',cue:'',why:'',vald:false,aclWork:false,tendonWork:false,rx:true},o);
+}
+
+RX.INSERTS={
+  nordic:(c)=>mkEx({name:'Nordic Hamstring Curl',block:'Accessory',sets:'2',reps:c.level==='novice'?'3-4':'4-6',tempo:'slow eccentric',rest:'90s',
+    cue:'Hips locked, fight the fall as long as possible, hands catch.',aclWork:true,
+    why:'Weekly Nordic minimum — low volume (2 x 4-6) builds eccentric hamstring strength as well as high volume (Cuthbert 2020).'}),
+  copen:(c)=>mkEx({name:c.level==='novice'?'Copenhagen Plank (short lever, knee on bench)':'Copenhagen Plank (long lever)',block:'Accessory',
+    sets:'2',reps:c.level==='novice'?'15-20s ea':'20-30s ea',tempo:'iso',rest:'60s',
+    cue:'Top leg drives down into the bench, hips square, body in one line.',aclWork:true,
+    why:'Adductor strength for cutting sports — the Copenhagen program cut groin problems ~41% (Harøy 2019).'}),
+  sprint:(c)=>c.season==='In-Season'
+    ?mkEx({name:'Acceleration 10-20 m + Fly 10 m',block:'Speed / COD',sets:'1',reps:'4-5',weight:'BW',rpe:'max intent',rest:'2 min',
+      cue:'Push the ground back, tall finish through the fly.',
+      why:'Weekly >=95% speed exposure keeps top speed sharp in-season; best placed ~2 days before a game (Buchheit 2023).'})
+    :mkEx({name:'Acceleration 10-20 m',block:'Speed / COD',sets:'1',reps:c.level==='novice'?'5':'6',weight:'BW',rpe:'max intent',rest:'1-2 min (full)',
+      cue:'Shin angles forward, piston arms, stay low through 10 m.',
+      why:'At least one >=95% sprint exposure per week; full recovery keeps it speed work, not conditioning (Haugen 2019).'})
+};
+
+RX.NMT_TEXT='NMT (~12 min): snapdown to stick 2x5, SL hop-and-stick 2x4/leg, lateral band walk 2x10/side, side plank 2x20s/side';
+
+RX.audit=function(athId,o){
+  o=o||{};
+  const apply=!!o.apply;
+  const p=S.programs[athId]; if(!p)return null;
+  const ath=S.athletes.find(a=>a.id===athId); if(!ath)return null;
+  const opts=Object.assign({},(p._genState&&p._genState.opts)||{},{season:p.season||((p._genState&&p._genState.opts)||{}).season||''});
+  if(!opts.days){
+    const w0=(p.weeks_data||[]).find(w=>w.phase!=='Retest');
+    opts.days=w0?(w0.days||[]).length:3;
+  }
+  const c=RX.ctx(ath,opts), d=RX.dose(c);
+  const cons=(window.PB&&PB.activeConstraints)?PB.activeConstraints(ath).map(x=>x.region):[];
+  const impactBanned=cons.includes('knee')||cons.includes('ankle');
+
+  const out={ver:RX.ver,at:new Date().toISOString(),ctx:c,dose:{plyoSess:d.plyoSess,plyoWeekMin:d.plyoWeekMin,primarySetCap:d.primarySetCap,nmtMin:d.nmtMin,copenTarget:d.copenTarget},weeks:[],fixes:0,flags:0};
+  let prevSets=null;
+
+  (p.weeks_data||[]).forEach(w=>{
+    const wr={week:w.week,phase:w.phase||'',locked:false,plyo:0,sprint:0,nordic:0,copen:0,nmt:0,sessions:0,sets:0,findings:[]};
+    out.weeks.push(wr);
+    if(w.phase==='Retest'){wr.retest=true;return;}
+    const locked=weekLocked(p,w.week); wr.locked=locked;
+    const can=apply&&!locked;
+    const note=(kind,msg,fixed)=>{wr.findings.push({kind,msg,fixed:!!fixed});if(fixed)out.fixes++;else if(kind!=='info')out.flags++;};
+    const sessions=[];
+    (w.days||[]).forEach(day=>(day.sessions||[]).forEach(s=>sessions.push({day,s})));
+    wr.sessions=sessions.length;
+
+    sessions.forEach(({day,s})=>{
+      s.exercises=s.exercises||[];
+      const tag=(day.day||'')+' '+(s.type||'');
+      // tag + rest defaults (fills blanks only)
+      s.exercises.forEach(ex=>{
+        if(!ex.block&&can){ex.block=RX.blockOf(ex);}
+        if(!ex.rest&&can){const b=RX.blockOf(ex);ex.rest=(b==='Speed / COD'||b==='Plyo / Reactive')?'full (2-3 min)':b==='Primary Strength'?d.str.rest:b==='Conditioning'?'per protocol':'60-90s';}
+      });
+      // order
+      const idx=s.exercises.map(ex=>BLOCK_ORDER.indexOf(RX.blockOf(ex)));
+      const sorted=idx.every((v,i)=>i===0||v>=idx[i-1]);
+      if(!sorted){
+        if(can){
+          const withI=s.exercises.map((ex,i)=>({ex,i,b:BLOCK_ORDER.indexOf(RX.blockOf(ex))}));
+          withI.sort((a,b)=>(a.b-b.b)||(a.i-b.i));
+          s.exercises=withI.map(x=>x.ex);
+          relabelPairs(s.exercises);
+          note('order',tag+': reordered so speed/plyo come before strength (fresh-first).',true);
+        }else note('order',tag+': fast work is placed after strength.',false);
+      }
+      // plyo cap
+      const plyoExs=s.exercises.filter(RX.isPlyo);
+      let contacts=plyoExs.reduce((a,ex)=>a+RX.contacts(ex),0);
+      if(contacts>d.plyoSess){
+        if(can){
+          let guard=40;
+          while(contacts>d.plyoSess&&guard-->0){
+            const big=plyoExs.filter(ex=>RX.num(ex.sets)>1).sort((a,b)=>RX.contacts(b)-RX.contacts(a))[0];
+            if(!big)break;
+            const before=RX.contacts(big);
+            const hadContacts=parseFloat(big.contacts)>0;
+            const perSet=before/RX.num(big.sets);
+            big.sets=String(RX.num(big.sets)-1);
+            if(hadContacts)big.contacts=Math.round(perSet*RX.num(big.sets));
+            contacts=plyoExs.reduce((a,ex)=>a+RX.contacts(ex),0);
+          }
+          note('plyo',tag+': plyo trimmed to '+contacts+' contacts (cap '+d.plyoSess+').',true);
+          if(contacts>d.plyoSess)note('plyo',tag+': still '+contacts+' contacts after trimming — reduce reps by hand.',false);
+        }else note('plyo',tag+': '+contacts+' plyo contacts, over the '+d.plyoSess+' cap.',false);
+      }
+      wr.plyo+=contacts;
+      // in-season / phase primary set cap
+      const prim=s.exercises.filter(ex=>RX.blockOf(ex)==='Primary Strength');
+      let pSets=prim.reduce((a,ex)=>a+(RX.num(ex.sets)||0),0);
+      if(pSets>d.primarySetCap){
+        if(can){
+          let guard=40;
+          while(pSets>d.primarySetCap&&guard-->0){
+            const big=prim.filter(ex=>RX.num(ex.sets)>2).sort((a,b)=>RX.num(b.sets)-RX.num(a.sets))[0];
+            if(!big)break;
+            big.sets=String(RX.num(big.sets)-1);
+            pSets=prim.reduce((a,ex)=>a+(RX.num(ex.sets)||0),0);
+          }
+          note('volume',tag+': primary strength trimmed to '+pSets+' sets ('+c.season+' cap '+d.primarySetCap+').',true);
+        }else note('volume',tag+': '+pSets+' primary sets, over the '+c.season+' cap of '+d.primarySetCap+'.',false);
+      }
+      // counts
+      if(s.exercises.some(RX.isSprint)||(s.sprint&&String(s.sprint).trim().length>3&&!/^(none|n\/a|-|—)$/i.test(String(s.sprint).trim())))wr.sprint++;
+      wr.nordic+=s.exercises.filter(ex=>RE.nordic.test(ex.name||'')).length;
+      wr.copen+=s.exercises.filter(ex=>RE.copen.test(ex.name||'')).length;
+      wr.sets+=s.exercises.reduce((a,ex)=>a+(RX.num(ex.sets)||0),0);
+      // NMT content in warm-up
+      const wu=String(s.warmup||'');
+      const nmtIn=RE.landing.test(wu)||s.exercises.some(ex=>RX.blockOf(ex)==='Movement Prep'&&RE.landing.test(ex.name||''));
+      if(nmtIn)wr.nmt++;
+      else if(can){
+        s.warmup=(wu?wu+' | ':'')+RX.NMT_TEXT;
+        wr.nmt++;
+        note('nmt',tag+': added landing / single-leg / hip NMT to the warm-up.',true);
+      }else note('nmt',tag+': warm-up has no landing-mechanics component.',false);
+    });
+
+    if(!sessions.length)return;
+    const first=sessions[0].s;
+    const lowerS=(sessions.find(x=>RX.sessionIsLower(x.s))||sessions[0]).s;
+    const pushAcc=(s,ex)=>{
+      // insert before any Conditioning so block order holds
+      const ci=s.exercises.findIndex(e=>RX.blockOf(e)==='Conditioning');
+      if(ci<0)s.exercises.push(ex);else s.exercises.splice(ci,0,ex);
+      relabelPairs(s.exercises);
+    };
+
+    // sprint minimum
+    if(wr.sprint<d.sprintMin){
+      if(can&&!impactBanned){
+        const ex=RX.INSERTS.sprint(c);
+        const pi=first.exercises.findIndex(e=>BLOCK_ORDER.indexOf(RX.blockOf(e))>1);
+        if(pi<0)first.exercises.push(ex);else first.exercises.splice(pi,0,ex);
+        relabelPairs(first.exercises);
+        wr.sprint++;
+        note('sprint','Added the weekly >=95% sprint exposure to '+(first.type||'session 1')+'.',true);
+      }else note('sprint',impactBanned?'No sprint exposure this week (knee/ankle constraint active — coach call).':'No >=95% sprint exposure this week.',false);
+    }
+    // nordic minimum
+    if(wr.nordic<d.nordicMin){
+      if(can){pushAcc(lowerS,RX.INSERTS.nordic(c));wr.nordic++;note('nordic','Added Nordic hamstring curl (weekly minimum).',true);}
+      else note('nordic','No Nordic hamstring work this week.',false);
+    }
+    // copenhagen minimum (field sports)
+    if(d.copenMin&&wr.copen<d.copenMin){
+      if(can){pushAcc(lowerS,RX.INSERTS.copen(c));wr.copen++;note('copen','Added Copenhagen adductor work (field-sport minimum).',true);}
+      else note('copen','No Copenhagen / adductor work this week.',false);
+    }else if(d.copenTarget>wr.copen&&wr.copen>=d.copenMin){
+      note('info','Copenhagen '+wr.copen+'x this week; research target is '+d.copenTarget+'x in '+c.season.toLowerCase()+'.',false);
+    }
+    // plyo weekly floor (info)
+    if(d.plyoWeekMin&&wr.plyo<d.plyoWeekMin*0.5&&!impactBanned){
+      note('info','Only '+wr.plyo+' plyo contacts this week — well under the ~'+d.plyoWeekMin+' that drives adaptation.',false);
+    }
+    // asymmetry — unilateral presence
+    const vd=RX.valdDetail(ath);
+    if(vd.sides.length){
+      const lowerSess=sessions.filter(x=>RX.sessionIsLower(x.s));
+      const noUni=lowerSess.filter(x=>!(x.s.exercises||[]).some(e=>RE.uni.test(e.name||'')));
+      if(noUni.length)note('asym',noUni.length+' lower session(s) with no single-leg work despite a recorded asymmetry.',false);
+    }
+    // NMT weekly dose gap
+    if(d.nmtGap)note('info','Trains here '+c.days+'x/wk — NMT only protects at 2-3x/wk. Send the homework NMT routine for practice days.',false);
+    // spike
+    if(prevSets!=null&&prevSets>0&&wr.sets>prevSets*1.15){
+      note('info','Total sets up '+Math.round((wr.sets/prevSets-1)*100)+'% vs last week (soft flag, >15%).',false);
+    }
+    prevSets=wr.sets;
+  });
+
+  if(apply){
+    p.rxAudit=out;
+    if(out.fixes)p.edited=true;
+    if(window.PB&&typeof PB.screenProgram==='function'&&cons.length){try{PB.screenProgram(athId,true);}catch(e){}}
+    save();
+  }
+  return out;
+};
+
+/* ═══════════════ SECTION 7 — GENERATION HOOK ═══════════════════════════ */
+
+if(typeof window.genProgram==='function'){
+  const _rxPrevGen=window.genProgram;
+  window.genProgram=async function(resumeAthId){
+    const athId=resumeAthId||(document.getElementById('prog-ath')&&document.getElementById('prog-ath').value);
+    const r=await _rxPrevGen.apply(this,arguments);
+    try{
+      const p=athId&&S.programs[athId];
+      if(p&&(p.weeks_data||[]).length){
+        const res=RX.audit(athId,{apply:true});
+        if(res&&typeof toast==='function')toast('Evidence check: '+res.fixes+' fix'+(res.fixes===1?'':'es')+', '+res.flags+' flag'+(res.flags===1?'':'s'));
+        if(typeof showProgDetail==='function'&&document.getElementById('prog-detail'))showProgDetail(athId);
+      }
+    }catch(e){console.warn('[RX] post-generation audit failed',e);}
+    return r;
+  };
+}
+
+/* ═══════════════ SECTION 8 — RENDER: EVIDENCE CHECK CARD ════════════════ */
+
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+RX.esc=esc;
+
+RX.card=function(athId){
+  const host=document.getElementById('prog-detail'); if(!host)return;
+  const p=S.programs[athId]; if(!p||!(p.weeks_data||[]).length)return;
+  let card=document.getElementById('rx-card');
+  if(!card){card=document.createElement('div');card.id='rx-card';card.className='card';host.insertBefore(card,host.firstChild);}
+  const a=RX.audit(athId,{apply:false});   // live read; never mutates
+  const c=a.ctx, d=a.dose;
+  const open=RX._open||false;
+  const rows=a.weeks.map(w=>{
+    if(w.retest)return '<tr><td>'+w.week+'</td><td colspan="6" style="color:var(--text3);">Retest / deload</td></tr>';
+    const ok=(v,min)=>'<span style="color:'+(v>=min?'var(--accent)':'var(--orange)')+';">'+v+'</span>';
+    return '<tr><td>'+w.week+(w.locked?' <span style="color:var(--text3);font-size:8px;">logged</span>':'')+'</td>'
+      +'<td>'+w.plyo+'</td><td>'+ok(w.sprint,1)+'</td><td>'+ok(w.nordic,1)+'</td>'
+      +'<td>'+(d.copenTarget?ok(w.copen,1):w.copen)+'</td><td>'+ok(w.nmt,w.sessions)+'/'+w.sessions+'</td>'
+      +'<td style="color:'+(w.findings.some(f=>!f.fixed&&f.kind!=='info')?'var(--orange)':'var(--text3)')+';">'+w.findings.filter(f=>!f.fixed).length+'</td></tr>';
+  }).join('');
+  const openFindings=a.weeks.flatMap(w=>w.findings.filter(f=>!f.fixed).map(f=>'Wk '+w.week+': '+f.msg));
+  const last=p.rxAudit;
+  card.innerHTML='<div class="ph" style="margin-bottom:6px;"><div><div class="ph-title">EVIDENCE CHECK</div>'
+    +'<div class="ph-sub">'+esc((c.sex==='F'?'Female':c.sex==='M'?'Male':'Sex not set')+' · '+c.stage+'-PHV'+(c.stageEst?' (est.)':'')+' · '+c.level+(c.levelEst?' (est.)':'')+' · '+c.season)+'</div></div>'
+    +'<div class="ph-actions"><button class="btn btn-sm" onclick="RX.rerun(\''+athId+'\')">Re-run check</button>'
+    +'<button class="btn btn-sm" onclick="RX._open=!RX._open;RX.card(\''+athId+'\')">'+(open?'Hide':'Details')+'</button></div></div>'
+    +'<div style="font-size:10px;color:var(--text2);line-height:1.7;">Caps: '+d.plyoSess+' plyo contacts/session · '+d.primarySetCap+' primary sets/session · NMT ~'+d.nmtMin+' min every session'+(d.copenTarget?' · Copenhagen '+d.copenTarget+'x/wk':'')
+    +(last?' · last check '+esc(String(last.at).slice(0,10))+' ('+last.fixes+' fixes applied)':'')+'</div>'
+    +(open?('<div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;border-collapse:collapse;font-size:10px;text-align:left;">'
+      +'<thead><tr style="color:var(--text3);"><th>Wk</th><th>Plyo</th><th>Sprint</th><th>Nordic</th><th>Copen</th><th>NMT</th><th>Open</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +(openFindings.length?'<div style="font-size:10px;color:var(--orange);margin-top:8px;line-height:1.7;">'+openFindings.map(esc).join('<br>')+'</div>':'<div style="font-size:10px;color:var(--accent);margin-top:8px;">No open findings.</div>')
+      +'<details style="margin-top:8px;font-size:9px;color:var(--text3);"><summary style="cursor:pointer;">Sources</summary><div style="line-height:1.7;margin-top:4px;">'
+      +Object.values(RX.SRC).map(s=>'['+s.g+'] '+esc(s.t)).join('<br>')
+      +'<br>Grades: A = meta-analysis/RCT/guideline · B = consensus/single trial · C = practitioner default.</div></details>'):'');
+};
+
+RX.rerun=function(athId){
+  const r=RX.audit(athId,{apply:true});
+  if(typeof showProgDetail==='function')showProgDetail(athId);
+  if(r&&typeof toast==='function')toast('Evidence check: '+r.fixes+' fixes, '+r.flags+' open flags'+(r.weeks.some(w=>w.locked)?' (logged weeks left untouched)':''));
+};
+
+if(typeof window.showProgDetail==='function'){
+  const _rxPrevSPD=window.showProgDetail;
+  window.showProgDetail=function(athId){
+    const r=_rxPrevSPD.apply(this,arguments);
+    try{RX.card(athId);}catch(e){console.warn('[RX] card failed',e);}
+    return r;
+  };
+}
+
+/* ═══════════════ SECTION 9 — ATHLETE EVIDENCE PROFILE ═══════════════════ */
+
+RX.profileCard=function(athId){
+  const host=document.getElementById('ath-detail'); if(!host)return;
+  const ath=S.athletes.find(a=>a.id===athId); if(!ath)return;
+  let card=document.getElementById('rx-prof');
+  if(!card){card=document.createElement('div');card.className='card';card.id='rx-prof';host.appendChild(card);}
+  const c=RX.ctx(ath,{});
+  const sel=(k,opts,cur)=>'<select onchange="RX.setField(\''+athId+'\',\''+k+'\',this.value)" style="font-size:13px;padding:6px 8px;">'
+    +opts.map(o=>'<option value="'+o[0]+'"'+(String(cur||'')===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+  const inp=(k,ph)=>'<textarea onchange="RX.setField(\''+athId+'\',\''+k+'\',this.value)" placeholder="'+ph+'" style="width:100%;min-height:44px;font-size:12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:var(--r,6px);padding:6px;">'+esc(ath[k]||'')+'</textarea>';
+  card.innerHTML='<div class="ph"><div class="ph-title">EVIDENCE PROFILE</div></div>'
+    +'<div class="g2" style="gap:8px;">'
+    +'<div class="fg"><label>Sex</label>'+sel('sex',[['','—'],['F','Female'],['M','Male']],ath.sex)+'</div>'
+    +'<div class="fg"><label>Training age</label>'+sel('trainingAge',[['','Auto ('+c.level+')'],['novice','Novice'],['intermediate','Intermediate'],['advanced','Advanced']],ath.trainingAge)+'</div>'
+    +'<div class="fg"><label>Maturity</label>'+sel('maturity',[['','Auto ('+c.stage+'-PHV, age band)'],['pre','Pre-PHV (measured)'],['circa','Circa-PHV (measured)'],['post','Post-PHV (measured)']],ath.maturity)+'</div>'
+    +'</div>'
+    +'<div class="fg"><label>Goals</label>'+inp('goals','e.g. faster first step, stronger, stay healthy')+'</div>'
+    +'<div class="fg"><label>Profile notes (performance context — NOT injuries; injuries go in Notes)</label>'+inp('profileNotes','film reads, OHM shape, tendencies')+'</div>'
+    +'<div class="fg"><label>Current block context</label>'+inp('blockContext','who they train with, frequency, what this block is for')+'</div>'
+    +'<div style="font-size:9px;color:var(--text3);">Maturity auto-estimate is an age band only. For a real read, measure %PAH (Khamis-Roche) or track growth rate (>=5 cm/yr = growth spurt).</div>';
+};
+
+RX.setField=function(athId,k,v){
+  const ath=S.athletes.find(a=>a.id===athId); if(!ath)return;
+  v=String(v||'').trim();
+  if(v)ath[k]=v;else delete ath[k];
+  save();
+  if(k!=='goals'&&k!=='profileNotes'&&k!=='blockContext')RX.profileCard(athId);
+};
+
+if(typeof window.showAthDetail==='function'){
+  const _rxPrevSAD=window.showAthDetail;
+  window.showAthDetail=function(athId){
+    const r=_rxPrevSAD.apply(this,arguments);
+    try{RX.profileCard(athId);}catch(e){console.warn('[RX] profile card failed',e);}
+    return r;
+  };
+}
+
+/* ═══════════════ SECTION 10 — ROSTER MERGE ═════════════════════════════
+   Never overwrites. Fills blanks, adds new athletes, appends notes only
+   if the exact text is not already there. */
+
+const norm=s=>String(s||'').toLowerCase().replace(/[^a-z]/g,'');
+
+RX.findAth=function(r){
+  const names=[[r.first,r.last]].concat(r.aliases||[]);
+  for(const [f,l] of names){
+    const hit=S.athletes.find(a=>norm(a.first)===norm(f)&&(norm(a.last)===norm(l)||(!norm(a.last)&&!l)));
+    if(hit)return hit;
+  }
+  // first-name-only record with an empty last name
+  const bare=S.athletes.find(a=>norm(a.first)===norm(r.first)&&!norm(a.last));
+  if(bare)return bare;
+  // roster entry has no last name: match a unique first name
+  if(!norm(r.last)){
+    const same=S.athletes.filter(a=>norm(a.first)===norm(r.first));
+    if(same.length===1)return same[0];
+  }
+  return null;
+};
+
+RX.planMerge=function(list){
+  return (list||[]).map(r=>{
+    const ex=RX.findAth(r);
+    if(!ex)return {r,action:'add',changes:['new athlete']};
+    const ch=[];
+    ['sport','position','age','sex','trainingAge','maturity','goals','profileNotes','blockContext','status'].forEach(k=>{
+      if(r[k]!=null&&r[k]!==''&&(ex[k]==null||ex[k]===''))ch.push(k);
+    });
+    const v=ex.vald||{};
+    const vk=Object.keys(r.vald||{}).filter(k=>v[k]==null||v[k]==='');
+    if(vk.length)ch.push(vk.length+' test value'+(vk.length>1?'s':''));
+    if(r.notes&&!String(ex.notes||'').includes(r.notes))ch.push('notes');
+    if(r.ohmClass&&!(ex.ohm&&ex.ohm.profile&&ex.ohm.profile.classification))ch.push('OHM profile');
+    return {r,ex,action:ch.length?'update':'skip',changes:ch.length?ch:['already up to date']};
+  });
+};
+
+RX.applyMerge=function(plan){
+  let added=0,updated=0;
+  plan.forEach(it=>{
+    const r=it.r;
+    if(it.action==='add'){
+      const obj={id:uid(),first:r.first,last:r.last,sport:r.sport||'',position:r.position||'',age:r.age!=null?String(r.age):'',
+        status:r.status||'Active',notes:r.notes||'',vald:Object.assign({},r.vald||{})};
+      ['sex','trainingAge','maturity','goals','profileNotes','blockContext'].forEach(k=>{if(r[k])obj[k]=r[k];});
+      if(r.ohmClass)obj.ohm={sessions:[],profile:{force:null,mid:null,velocity:null,classification:r.ohmClass}};
+      S.athletes.push(obj);added++;
+      if(typeof _captureMetricSnapshot==='function'){try{_captureMetricSnapshot(obj.id);}catch(e){}}
+    }else if(it.action==='update'){
+      const ex=it.ex;
+      ['sport','position','age','sex','trainingAge','maturity','goals','profileNotes','blockContext','status'].forEach(k=>{
+        if(r[k]!=null&&r[k]!==''&&(ex[k]==null||ex[k]===''))ex[k]=String(r[k]);
+      });
+      if(!ex.vald)ex.vald={};
+      Object.keys(r.vald||{}).forEach(k=>{if(ex.vald[k]==null||ex.vald[k]==='')ex.vald[k]=r.vald[k];});
+      if(r.notes&&!String(ex.notes||'').includes(r.notes))ex.notes=(ex.notes?ex.notes.trim()+'\n':'')+r.notes;
+      if(r.ohmClass&&!(ex.ohm&&ex.ohm.profile&&ex.ohm.profile.classification)){
+        if(!ex.ohm)ex.ohm={sessions:[]};
+        if(!ex.ohm.profile)ex.ohm.profile={force:null,mid:null,velocity:null};
+        ex.ohm.profile.classification=r.ohmClass;
+      }
+      updated++;
+    }
+  });
+  if(!S.rosterImports)S.rosterImports=[];
+  S.rosterImports.push({at:new Date().toISOString(),added,updated});
+  save();
+  if(typeof renderAthList==='function'){try{renderAthList();}catch(e){}}
+  return {added,updated};
+};
+
+RX.openRoster=function(list,label){
+  list=list||RX.ROSTER;
+  const plan=RX.planMerge(list);
+  RX._plan=plan;
+  let m=document.getElementById('rx-roster-modal');
+  if(!m){
+    m=document.createElement('div');m.id='rx-roster-modal';m.className='mo';
+    document.body.appendChild(m);
+  }
+  const rows=plan.map((it,i)=>'<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--border);font-size:12px;">'
+    +'<input type="checkbox" data-i="'+i+'" '+(it.action!=='skip'&&it.r.recent!==false?'checked':'')+(it.action==='skip'?' disabled':'')+'>'
+    +'<span style="flex:1;"><b>'+esc(it.r.first+' '+it.r.last)+'</b> <span style="color:var(--text3);">'+esc(it.r.sport||'')+(it.r.age?' · '+esc(it.r.age):'')+'</span><br>'
+    +'<span style="font-size:10px;color:'+(it.action==='add'?'var(--accent)':it.action==='update'?'var(--text2)':'var(--text3)')+';">'
+    +(it.action==='add'?'ADD':it.action==='update'?'FILL BLANKS: ':'')+esc(it.action==='add'?'':it.changes.join(', '))+(it.action==='skip'?'already up to date':'')+'</span></span></label>').join('');
+  m.innerHTML='<div class="modal" style="max-width:560px;"><div class="m-hdr"><div class="m-title">'+esc(label||'MERGE ROSTER')+'</div><div class="m-close" onclick="RX.closeRoster()">&#10005;</div></div>'
+    +'<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">Adds new athletes and fills empty fields only. Nothing already in the app is overwritten.</div>'
+    +'<div style="max-height:55vh;overflow-y:auto;">'+rows+'</div>'
+    +'<div class="m-foot"><button class="btn" onclick="RX.closeRoster()">Cancel</button><button class="btn btn-primary" onclick="RX.confirmRoster()">Merge selected</button></div></div>';
+  m.classList.add('open');m.style.display='flex';
+};
+RX.closeRoster=function(){const m=document.getElementById('rx-roster-modal');if(m){m.classList.remove('open');m.style.display='none';}};
+RX.confirmRoster=function(){
+  const m=document.getElementById('rx-roster-modal'); if(!m||!RX._plan)return;
+  const pick=[...m.querySelectorAll('input[type=checkbox]:checked')].map(x=>RX._plan[+x.dataset.i]);
+  const res=RX.applyMerge(pick);
+  RX.closeRoster();
+  if(typeof toast==='function')toast('Roster merged: '+res.added+' added, '+res.updated+' updated');
+  if(typeof go==='function'){try{go('athletes');}catch(e){}}
+};
+RX.importRosterFile=function(e){
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      const list=Array.isArray(d)?d:(d.roster||d.athletes||[]);
+      if(!list.length){toast('No athletes in that file');return;}
+      RX.openRoster(list,'MERGE ROSTER FILE');
+    }catch(err){toast('Invalid roster file');}
+  };
+  rd.readAsText(f);e.target.value='';
+};
+
+function mountRosterButtons(){
+  // Athletes page header
+  const bar=document.querySelector('#pg-athletes .ph-actions')||(document.getElementById('ath-search')&&document.getElementById('ath-search').parentElement);
+  if(bar&&!document.getElementById('rx-roster-btn')){
+    const b=document.createElement('button');b.className='btn';b.id='rx-roster-btn';b.textContent='Merge Roster';
+    b.onclick=()=>RX.openRoster();
+    bar.appendChild(b);
+  }
+  // Settings → Data
+  const imp=document.getElementById('import-in');
+  if(imp&&!document.getElementById('rx-roster-in')){
+    const lab=document.createElement('label');lab.className='btn btn-sm';lab.style.cursor='pointer';lab.htmlFor='rx-roster-in';lab.textContent='Merge roster file';
+    const inp=document.createElement('input');inp.type='file';inp.id='rx-roster-in';inp.accept='.json';inp.style.display='none';
+    inp.onchange=RX.importRosterFile;
+    imp.insertAdjacentElement('afterend',lab);lab.insertAdjacentElement('afterend',inp);
+  }
+}
+RX.mountRosterButtons=mountRosterButtons;
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountRosterButtons);else mountRosterButtons();
+
+/* ═══════════════ SECTION 11 — FITCLUB ROSTER (Sep 2026) ═════════════════
+   Built from Coach Austin's own athlete files. Heights in cm, forces in N,
+   times in s. sl_jump_asym_side / sl_hop side = the HIGHER side, as VALD
+   labels it; RX.valdDetail computes the weaker side from L/R values.
+   notes = real load constraints only (they feed the injury screen). */
+
+RX.ROSTER=[
+  {first:'Addie',last:'Talbott',sport:'Soccer',age:16,sex:'F',status:'In-Season',
+   ohmClass:'Velocity-expressive, force hole',
+   goals:'Explosiveness and speed; braking / deceleration quality.',
+   profileNotes:'OHM June 2026: velocity-expressive with a force-end hole; cold on rep 1 (needs primer reps).',
+   blockContext:'Combined 6-week in-season block with sister Liv Talbott, braking/deceleration focus, 1x/week at FitClub (Sep 2026).',
+   notes:'In-season soccer, 1x/week here: no next-day soreness.',
+   vald:{test_date:'2026-08-13',cod:4.623,sl_hop_l:1.10,sl_hop_r:1.18,sl_hop_asym:6.7,sl_hop_l_pct:79,sl_hop_r_pct:87,
+         sl_jump_l_cm:16.8,sl_jump_r_cm:16.0,sl_jump_asym_pct:4.5,sl_jump_asym_side:'Left',sl_jump_l_pct:80,sl_jump_r_pct:75,
+         hop_force:3941,hop_force_pct:81,hop_force_asym:'7.4% L',bw:134.7}},
+  {first:'Liv',last:'Talbott',sport:'Soccer',age:13,sex:'F',status:'In-Season',
+   ohmClass:'Developing, velocity-tilted',
+   goals:'Explosiveness and speed; close the left-leg gap.',
+   profileNotes:'OHM June 2026: developing, velocity-tilted shape. Large test-specific asymmetries (SL jump favors L, SL hop RSI favors R).',
+   blockContext:'Combined 6-week in-season block with sister Addie Talbott, left-leg asymmetry focus with ~2:1 left single-leg volume, 1x/week at FitClub (Sep 2026).',
+   notes:'In-season soccer, 1x/week here: no next-day soreness. Age 13: monitor growth-related soreness.',
+   vald:{test_date:'2026-08-13',cod:4.902,sl_hop_l:0.84,sl_hop_r:1.11,sl_hop_asym:25,sl_hop_l_pct:67,sl_hop_r_pct:95,
+         sl_jump_l_cm:18.9,sl_jump_r_cm:13.6,sl_jump_asym_pct:28,sl_jump_asym_side:'Left',sl_jump_l_pct:92,sl_jump_r_pct:58,
+         hop_force:2726,hop_force_pct:35,hop_force_asym:'21% R',bw:112.9}},
+  {first:'Maeve',last:'Best',sport:'Lacrosse',age:15,sex:'F',status:'Off-Season',
+   ohmClass:'Force-rich, expression-poor',
+   goals:'Faster and shiftier for lacrosse, stronger, while staying safe.',
+   profileNotes:'Very tall. OHM June: steadiest force floor of the cohort, scattered at the velocity end. OHM Aug re-sweep: whole curve ~30% lower, light:heavy slope unchanged (~1.4), light-end scatter gone. Film (July): flat third step, long backside cycle, flat-footed contacts, ~170 degree lockout on decel, legs diverging on cuts, shuffle base outside the hips.',
+   blockContext:'Off-season triphasic-style block (6-8 wk) shared with Noelle, Sep 2026; opened with heavy COD before lifting.',
+   vald:{test_date:'2026-08',hop_force:3644,hop_force_pct:74,hop_force_asym:'2.2%',sl_jump_l_cm:14.1,sl_jump_r_cm:16.1,sl_jump_asym_pct:13,sl_jump_asym_side:'Right',bw:141.3}},
+  {first:'Noelle',last:'',sport:'',sex:'F',status:'Off-Season',
+   aliases:[],
+   ohmClass:'High peaks, inconsistent floor / repeat effort',
+   goals:'Faster feet, faster overall, stronger.',
+   profileNotes:'Lehigh commit. OHM June 2026: high peaks but inconsistent floor and repeat effort.',
+   blockContext:'Off-season triphasic-style block (6-8 wk) shared with Maeve Best, Sep 2026.'},
+  {first:'Chase',last:'Powers',sport:'Lacrosse / Soccer',position:'Attack/Mid',age:16,sex:'F',status:'In-Season',
+   goals:'Speed and strength; convert elite hop RSI into CMJ output.',
+   profileNotes:'Force-transfer gap: SL hop RSI ~98-99th pct not showing up in CMJ. Benchmarks: top speed 19.7 mph, broad jump 7\'3", OHM pull 303 lb. Trap bar: 210 @ RPE 8 (Mar 2026), 225 (Aug 2026).',
+   blockContext:'6-week 2x/wk in-season power block (from Aug 28 2026): trap bar ~225 maintained, contrast pairs for the CMJ gap, left-biased single-leg work every session, week-4 retest vs Aug 3 baselines.',
+   notes:'In-season: maintain trap bar ~225 lb, no new maxes. SL jump 31% right-dominant: left-biased single-leg work every session.',
+   vald:{test_date:'2026-08-03',cmj:27.4,cmj_pct:61,trap:225,spd:2.033,cod:4.701,sl_jump_asym_pct:31,sl_jump_asym_side:'Right',
+         hop_force:4355,hop_force_pct:92,bj:87}},
+  {first:'Taryn',last:'Czick',sport:'Lacrosse',position:'Midfield',age:16,sex:'F',status:'In-Season',
+   goals:'Maintain multidirectional speed, stay healthy, raise VALD numbers, no strength regression while field sprint volume rises.',
+   profileNotes:'D1 Villanova commit. May 2026: 13% right-leg SL power deficit, 10yd 1.849, pro agility 4.978. Spent 3 weeks learning bracing + front squat.',
+   blockContext:'6-week in-season block (Day A/B/C) imported Aug 14 2026; trains 2-3x/week.',
+   notes:'In-season lacrosse: front squat currently 3x5 @ 75 lb while bracing is learned. Keep strength from regressing as field sprint volume rises.',
+   vald:{test_date:'2026-08-12',cmj:27.4,cmj_pct:61,dj_rsi:0.94,dj_pct:53,rsi:0.94,sl_hop_l:1.09,sl_hop_r:1.05,sl_hop_asym:3.7,
+         sl_jump_l_cm:16.2,sl_jump_r_cm:13.4,sl_jump_asym_pct:17,sl_jump_asym_side:'Left',hop_force:3631,hop_force_pct:69,
+         ham_iso_l:343,ham_iso_r:374,spd:1.942,pro_agility:4.763}},
+  {first:'Kailea',last:'Silva',sport:'Soccer',sex:'F',
+   aliases:[['Silva','']],
+   ohmClass:'Force-dominant, velocity/elastic deficit',
+   goals:'Fly-10 (north-star), sprint capacity on low rest, hold top speed through repeated bursts.',
+   profileNotes:'OHM Constant Force zones: speed ~25 lb, mid ~45 lb, force ~65 lb. Beep test (Assault runner) 25 on Jul 27 2026 = goal met. Cold-start activation issue.',
+   blockContext:'Pre-season block Jul-Aug 2026: 1x/wk 60 min with Coach Austin (Mondays sprint + Assault treadmill); Raleigh runs a separate strength day. Was leaving late Aug 2026 — archive if gone.',
+   notes:'Cold-start: primer reps before the first max effort.'},
+  {first:'Sophie',last:'Velez',sport:'',sex:'F',recent:false,
+   profileNotes:'CMJ braking asymmetry 19% right-dominant; programmed with tempo eccentrics and yielding isometrics.'},
+  {first:'Maggie',last:'Davis',sport:'',recent:false,
+   profileNotes:'54-percentile gap between hop RSI and drop jump RSI is the central programming driver.'},
+  {first:'Brendan',last:'Mullahey',sport:'Lacrosse',sex:'M',recent:false,
+   profileNotes:'OHM Constant Force; COD-first per Spellman, multidirectional diversity. Brother: Barret.'},
+  {first:'Barret',last:'Mullahey',sport:'Lacrosse',sex:'M',recent:false,
+   profileNotes:'OHM Constant Force; COD-first per Spellman, multidirectional diversity. Brother: Brendan.'},
+  {first:'Zoe',last:'Laferriere',sport:'',recent:false,
+   profileNotes:'Completed an 8-week triphasic block.'},
+  {first:'Grace',last:'',sport:'Soccer',recent:false,ohmClass:'Force-dominant, speed-zone deficit',
+   profileNotes:'Completed a 6-week OHM Constant Force block.'},
+  {first:'Dani',last:'',sport:'Soccer',recent:false,
+   profileNotes:'Completed a 6-week OHM Constant Force block. Fatigue-resistant and force-building.'}
+];
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing + audit + roster merge','color:#7aa2c4');
 })();
 
 </script>
