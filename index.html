@@ -5522,7 +5522,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 
 <script data-src="evidence-dropin.js">
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — EVIDENCE LAYER DROP-IN  v2.7
+   COACH OS — EVIDENCE LAYER DROP-IN  v2.8
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: LAST (after performance-dropin.js).
@@ -5579,7 +5579,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'2.7'};
+const RX={ver:'2.8'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -10449,7 +10449,199 @@ if(typeof _fl==='function')window.filmLoadFiles=function(){const r=_fl.apply(thi
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',AS.boot);else AS.boot();
 })();
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment','color:#7aa2c4');
+/* ═══════════════ SECTION 24 — THE LAB (own tab) + APPLY TO ATHLETE ════════
+   The sprint + squat assessment gets its own place in the main nav:
+   Today · Athletes · Lab · Build · Studio.
+   - The Film Room page (video, frames, angle keys, AI read, history) moves
+     into the Lab page. Same elements, same ids, nothing rebuilt.
+   - The athlete "Film" sub-tab now opens the Lab with that athlete picked.
+   - "Apply to athlete" on any result: links it to an athlete (pick one if
+     it was run without), stores it as her latest squat / sprint screen,
+     logs a session note, and then offers "Add fixes to program".
+   - Athlete profile gets a Lab card: latest squat and sprint result,
+     faults, and Open in Lab / Retest. */
+
+(function(){
+const AS=RX.assess; if(!AS)return;
+const LAB={};
+RX.lab=LAB;
+
+LAB.CSS=`
+#pg-lab #pg-film{display:block !important;padding:0 !important;}
+#pg-lab #pg-film>.ph{display:none !important;}
+#pg-lab .lab-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:#111311;border:1px solid rgba(255,255,255,.095);border-radius:12px;padding:14px 16px;margin:0 0 18px;}
+#pg-lab .lab-bar .lab-f{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0;}
+#pg-lab .lab-bar label{font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#686b66;margin:0;}
+#pg-lab .lab-bar select{width:100% !important;font-size:14px !important;padding:9px 10px !important;}
+#pg-lab .lab-bar .lab-note{flex:2 1 280px;font:400 11px/1.5 var(--disp);color:var(--text2);}
+#pg-lab .lab-bar .flex{gap:8px;}
+.lab-apply{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px;}
+.lab-apply select{flex:1 1 180px;font-size:13px !important;padding:7px 9px !important;}
+#lab-prof .lab-row{display:grid;grid-template-columns:90px 44px 1fr;gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--border);}
+#lab-prof .lab-row:last-of-type{border-bottom:none;}
+#lab-prof .lab-k{font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding-top:4px;}
+#lab-prof .lab-g{font:700 22px/1 var(--disp);color:var(--text);}
+#lab-prof .lab-d{font-size:11px;color:var(--text2);line-height:1.5;}
+#lab-prof .lab-d b{color:var(--text);font-weight:600;}
+`;
+
+/* ---- page + nav ---- */
+LAB.mount=function(){
+  if(!document.getElementById('lab-css')){const s=document.createElement('style');s.id='lab-css';s.textContent=LAB.CSS;(document.head||document.documentElement).appendChild(s);}
+  const pages=document.getElementById('pages'); const film=document.getElementById('pg-film');
+  if(!pages||!film)return false;
+  let pg=document.getElementById('pg-lab');
+  if(!pg){
+    pg=document.createElement('div');pg.className='page';pg.id='pg-lab';
+    pg.innerHTML='<div class="ph"><div><div class="ph-title">THE LAB</div><div class="ph-sub">Sprint + squat assessment · angle keys · fixes into the program</div></div><div class="ph-actions" id="lab-actions"></div></div>'
+      +'<div class="lab-bar"><div class="lab-f"><label for="film-ath">Athlete</label><div id="lab-ath-slot"></div></div>'
+      +'<div class="lab-note">Pick the athlete first and every result is applied to her automatically: saved as her latest squat or sprint screen and ready to add fixes to her program. Run it without an athlete and use Apply to athlete on the result.</div></div>';
+    pages.appendChild(pg);
+  }
+  if(film.parentElement!==pg){
+    film.classList.remove('page','sub-on','active');
+    pg.appendChild(film);
+  }
+  // athlete select + video/frame buttons move into the Lab header
+  const ath=document.getElementById('film-ath'), slot=document.getElementById('lab-ath-slot');
+  if(ath&&slot&&ath.parentElement!==slot){slot.appendChild(ath);ath.style.width='100%';}
+  const acts=document.getElementById('lab-actions'), oldActs=film.querySelector('.ph-actions');
+  if(acts&&oldActs)[...oldActs.children].forEach(c=>acts.appendChild(c));
+  // nav tab
+  const nav=document.getElementById('nav');
+  if(nav&&!nav.querySelector('.tab[data-page="lab"]')){
+    const t=document.createElement('div');t.className='tab';t.dataset.page='lab';t.setAttribute('onclick',"go('lab')");
+    t.innerHTML='<span class="ti">\u{1F52C}</span>Lab';
+    const after=nav.querySelector('.tab[data-page="athletes"]');
+    if(after&&after.nextSibling)nav.insertBefore(t,after.nextSibling);else nav.appendChild(t);
+    if(S.page==='lab')t.classList.add('active');
+  }
+  // athlete sub-nav: Film → Lab
+  const sb=document.querySelector('#ath-subnav .sb[data-sub="film"]');
+  if(sb&&!sb.dataset.lab){
+    sb.dataset.lab='1';
+    sb.innerHTML='<span>\u{1F52C}</span>Lab';
+    sb.setAttribute('onclick','RX.lab.open(S.selAth)');
+  }
+  if(typeof pageInits==='object'&&!pageInits.lab)pageInits.lab=function(){try{initFilm();}catch(e){}try{AS.boot();}catch(e){}};
+  return true;
+};
+LAB.open=function(athId){
+  go('lab');
+  const sel=document.getElementById('film-ath');
+  if(sel&&athId){if(![...sel.options].some(o=>o.value===athId)){try{initFilm();}catch(e){}}sel.value=athId;}
+};
+/* go('film') from anywhere now lands in the Lab. Installed after the shell
+   boots, so it sits outside the shell's own film → Athletes sub-tab route. */
+LAB.wrapGo=function(){
+  if(LAB._wrapped)return; LAB._wrapped=true;
+  const _go=window.go;
+  window.go=function(p){
+    if(p==='film')p='lab';
+    const r=_go.call(this,p);
+    if(p==='lab'){document.querySelectorAll('#nav .tab').forEach(t=>t.classList.toggle('active',t.dataset.page==='lab'));}
+    return r;
+  };
+};
+
+/* ---- apply to athlete ---- */
+LAB.summaryOf=function(a){
+  const r=a.result||{};
+  return {id:a.id,date:a.date,movement:a.movementLabel,moveId:a.moveId,grade:r.overallGrade||'?',score:r.overallScore!=null?r.overallScore:null,
+    faults:(r.faults||[]).filter(f=>AS.FAULTS[f.id]).map(f=>({id:f.id,label:AS.FAULTS[f.id].label,severity:f.severity||'warn'}))};
+};
+LAB.applyToAthlete=function(analysisId,athId,o){
+  o=o||{};
+  const a=AS.byId(analysisId); const ath=S.athletes.find(x=>x.id===athId);
+  if(!a||!ath)return null;
+  a.athId=ath.id; a.athName=an(ath);
+  const fam=a.family||'other';
+  if(!ath.lab)ath.lab={};
+  const cur=ath.lab[fam];
+  if(!cur||(cur.date||'')<=(a.date||''))ath.lab[fam]=LAB.summaryOf(a);
+  if(!o.silent&&!a.applied){
+    if(!S.sessions[ath.id])S.sessions[ath.id]=[];
+    const s=LAB.summaryOf(a);
+    S.sessions[ath.id].push({date:a.date,notes:'Lab: '+s.movement+' grade '+s.grade+(s.score!=null?' ('+s.score+')':'')+(s.faults.length?'. Faults: '+s.faults.map(f=>f.label).join(', '):'. No faults.'),updates:{}});
+    a.applied=true;
+  }
+  save();
+  if(!o.silent&&typeof toast==='function')toast('Applied to '+an(ath));
+  return ath.lab[fam];
+};
+/* results run with an athlete picked are applied automatically (no duplicate session note) */
+const _run=AS.run;
+AS.run=async function(o){
+  const a=await _run.apply(this,arguments);
+  try{if(a&&a.athId){LAB.applyToAthlete(a.id,a.athId,{silent:true});try{showFilmOutput(a);}catch(e){}}}catch(e){}
+  return a;
+};
+window.runFilmAnalysis=function(){return AS.run({});};
+
+/* output: Apply-to-athlete card at the top of the result */
+const _sfo=window.showFilmOutput;
+window.showFilmOutput=function(a){
+  let r;try{r=_sfo.apply(this,arguments);}catch(e){console.warn('[RX] lab output',e);}
+  try{
+    if(!a)return r;
+    const out=document.getElementById('film-output'); if(!out)return r;
+    const old=out.querySelector('.lab-apply-card'); if(old)old.remove();
+    const q=x=>"'"+String(x).replace(/'/g,"\\'")+"'";
+    const card=document.createElement('div');card.className='card lab-apply-card';
+    const opts=S.athletes.slice().sort((x,y)=>an(x).localeCompare(an(y))).map(x=>'<option value="'+x.id+'"'+(x.id===a.athId?' selected':'')+'>'+esc(an(x))+'</option>').join('');
+    card.innerHTML='<div class="card-title">Apply to athlete</div>'
+      +(a.athId&&a.applied?'<div class="as-ev">Applied to <b>'+esc(a.athName||'')+'</b>: saved as her latest '+esc(a.family||'')+' screen and logged in her sessions.</div>'
+        :a.athId?'<div class="as-ev">Linked to <b>'+esc(a.athName||'')+'</b> as her latest '+esc(a.family||'')+' screen. Apply to also log it in her sessions.</div>'
+        :'<div class="as-ev">Not linked to an athlete yet.</div>')
+      +'<div class="lab-apply"><select aria-label="Athlete">'+(a.athId?'':'<option value="">Choose athlete</option>')+opts+'</select>'
+      +'<button class="btn btn-primary btn-sm" onclick="(function(b){var v=b.previousElementSibling.value;if(!v){toast(\'Choose an athlete\');return;}RX.lab.applyToAthlete('+q(a.id)+',v);showFilmOutput(RX.assess.byId('+q(a.id)+'));})(this)">'+(a.applied?'Apply again':'Apply to athlete')+'</button>'
+      +(a.athId?'<button class="btn btn-sm" onclick="go(\'athletes\');showAthDetail('+q(a.athId)+')">Open profile</button>':'')+'</div>';
+    const first=out.querySelector('.card');
+    if(first)first.after(card);else out.prepend(card);
+  }catch(e){console.warn('[RX] lab apply card',e);}
+  return r;
+};
+
+/* ---- profile card ---- */
+LAB.profileHtml=function(ath){
+  const L=ath.lab||{}; const q=x=>"'"+String(x).replace(/'/g,"\\'")+"'";
+  const row=(fam,label)=>{
+    const s=L[fam];
+    if(!s)return '<div class="lab-row"><div class="lab-k">'+label+'</div><div class="lab-g">—</div><div class="lab-d">Not screened yet.</div></div>';
+    return '<div class="lab-row"><div class="lab-k">'+label+'</div><div class="lab-g">'+esc(s.grade)+'</div><div class="lab-d"><b>'+esc(s.movement)+'</b> · '+esc(s.date||'')+(s.score!=null?' · '+s.score:'')
+      +'<br>'+(s.faults.length?s.faults.map(f=>'<span class="as-st as-'+esc(f.severity)+'">'+(f.severity==='fail'?'Fix':'Watch')+'</span> '+esc(f.label)).join('<br>'):'No faults')+'</div></div>';
+  };
+  return '<div class="card-title" style="justify-content:space-between;"><span>Lab</span><span class="flex" style="gap:6px;"><button class="btn btn-sm" onclick="RX.lab.open('+q(ath.id)+')">Open in Lab</button></span></div>'
+    +row('squat','Squat')+row('sprint','Sprint');
+};
+if(typeof window.showAthDetail==='function'){
+  const _sad=window.showAthDetail;
+  window.showAthDetail=function(id){
+    const r=_sad.apply(this,arguments);
+    try{
+      const ath=S.athletes.find(a=>a.id===id); const det=document.getElementById('ath-detail');
+      if(ath&&det){
+        let c=document.getElementById('lab-prof');
+        if(!c){c=document.createElement('div');c.className='card';c.id='lab-prof';}
+        const anchor=document.getElementById('rx-prof');
+        if(anchor&&anchor.parentElement===det)anchor.after(c);else det.appendChild(c);
+        c.innerHTML=LAB.profileHtml(ath);
+      }
+    }catch(e){console.warn('[RX] lab profile',e);}
+    return r;
+  };
+}
+
+/* ---- boot after the shell has re-parented the pages ---- */
+LAB.boot=function(){
+  let tries=0;
+  const t=()=>{if(LAB.mount()&&document.getElementById('ath-subnav')){LAB.mount();LAB.wrapGo();if(S.page==='lab'||S.page==='film')go('lab');return;}if(++tries<40)setTimeout(t,100);else{LAB.mount();LAB.wrapGo();}};
+  t();
+};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(LAB.boot,150));else setTimeout(LAB.boot,150);
+})();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment, the Lab','color:#7aa2c4');
 })();
 
 </script>
