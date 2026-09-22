@@ -5522,7 +5522,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 
 <script data-src="evidence-dropin.js">
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — EVIDENCE LAYER DROP-IN  v2.3
+   COACH OS — EVIDENCE LAYER DROP-IN  v2.4
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: LAST (after performance-dropin.js).
@@ -5579,7 +5579,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'2.3'};
+const RX={ver:'2.4'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -7984,7 +7984,7 @@ SV.saveWell=function(athId,wi,di){
   save();
   if(e.score<60||e.pain){
     if(confirm('Readiness '+e.score+(e.pain?' with pain ('+e.painArea+')':'')+'. Lighten today (1 set off loaded work, speed/plyo reps cut a third)?')){
-      RX.gm.apply(athId,wi,di,'LOWREADY');
+      RX.gm.apply(athId,wi,di,(RX.season&&/off|pre/i.test(RX.season(ath))&&!/in-season/i.test(RX.season(ath))&&RX.gm.CTX['OFF-LOWREADY'])?'OFF-LOWREADY':'LOWREADY');
       SV.states[athId+'|'+wi+'|'+di]=null;delete SV.states[athId+'|'+wi+'|'+di];
     }
   }
@@ -9680,7 +9680,147 @@ GV.chip=function(){
 })();
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{try{GV.mountCSS();}catch(e){}});else{try{GV.mountCSS();}catch(e){}}
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace','color:#7aa2c4');
+/* ═══════════════ SECTION 21 — OFF-SEASON GAME / FATIGUE ADJUST ══════════
+   Every in-season option now has an off-season twin (grouped in the menu).
+   The difference is what each season protects:
+   - In-season protects the NEXT GAME: cut intensity and volume, stay fresh.
+   - Off-season protects the DEVELOPMENT STIMULUS (the heavy lift and the
+     max-speed exposure) and cuts VOLUME instead, because games are fewer
+     and getting faster / stronger is the job.
+   - Same-day and next-day are still leg-recovery days in either season:
+     match fatigue (sprint, jump, force) takes ~72 h to clear (Silva 2018,
+     meta-analysis; similar in female players, Goulart 2022). What the
+     off-season versions add back is upper-body and trunk work, which a
+     game does not tax, so the off-season week doesn't lose that training.
+   The menu lists the athlete's own season first. */
+
+(function(){
+const GM=RX.gm; if(!GM||!GM.CTX)return;
+GM.SEASON_OF=k=>/^OFF-/.test(k)?'Off-Season':'In-Season';
+const OFF={
+  'OFF-MD0':{label:'Off-season: game earlier today',note:'Off-season, game earlier today: no sprinting, jumping, cutting or heavy leg work. Upper body and trunk trained as written; leg isometrics at half dose.'},
+  'OFF-MD+1':{label:'Off-season: day after a game',note:'Off-season MD+1: legs recover (main lower lift = 2 technique sets at RPE 5, no Nordics or Copenhagens). Upper body and trunk as written.'},
+  'OFF-MD-1':{label:'Off-season: day before a game',note:'Off-season MD-1: short speed primer, main lift only (2 fast sets of 3 or fewer at RPE 6-7), other leg work off, upper body and trunk kept.'},
+  'OFF-MD-2':{label:'Off-season: 2 days before a game',note:'Off-season MD-2: sprint kept, main lift sets kept with RPE 8 cap, plyo cut a third, leg accessories 1 set off, conditioning halved.'},
+  'OFF-WITHIN72':{label:'Off-season: game within 72 h (1x/week athlete)',note:'Off-season, game within 72 h: main lift kept (RPE 8 cap), speed as written, plyo and leg accessories 1 set off, no extra conditioning.'},
+  'OFF-HEAVY':{label:'Off-season: big minutes / tournament weekend',note:'Off-season heavy game load: main lift intensity kept with 1 set off, speed reps cut a third, plyo halved, leg accessories 1 set off, upper body as written.'},
+  'OFF-LOWREADY':{label:'Off-season: low readiness today',note:'Off-season low readiness: main lift intensity kept with 1 set off, speed and plyo reps cut a third, accessories 1 set off, upper body as written.'}
+};
+Object.assign(GM.CTX,OFF);
+
+const UPPER=/press|push-?up|\brow\b|rows\b|pull-?up|pulldown|pull-apart|chin|bench|curl|tricep|face pull|y-?t-?w|landmine|dip\b/i;
+const TRUNK=/pallof|plank|dead ?bug|bird ?dog|carry|anti-?rot|hollow|ab wheel|rollout|suitcase/i;
+const LEG_ISO=/\biso\b|isometric|hold|bridge|calf|step-?down|wall sit|spanish squat/i;
+const HARD_ECC=/nordic|copenhagen/i;
+const PLYO_PREP=/pogo|hop|jump|bound|skip|snapdown/i;
+const upperOrTrunk=ex=>UPPER.test(ex.name||'')||TRUNK.test(ex.name||'');
+
+function stamp(ex){if(!ex._gmOrig)ex._gmOrig={sets:ex.sets,reps:ex.reps,rpe:ex.rpe,cue:ex.cue,skip:!!ex.skip};}
+function sets(ex,fn){const m=String(ex.sets==null?'':ex.sets);if(/\d/.test(m))ex.sets=m.replace(/\d+/g,d=>String(Math.max(1,fn(parseInt(d,10)))));}
+function reps(ex,fn){const m=String(ex.reps==null?'':ex.reps).match(/^(\d+)(.*)$/);if(m&&!/s\b|sec|yd|m\b/i.test(m[2]))ex.reps=Math.max(1,fn(parseInt(m[1],10)))+m[2];}
+function cap(ex,max){ex.rpe=ex.rpe?String(ex.rpe).replace(/\d+(\.\d+)?/g,d=>String(Math.min(max,+d))):String(max);}
+function note(ex,t){ex.cue=(ex._gmOrig.cue||'')+(ex._gmOrig.cue?' | ':'')+t;}
+function skip(ex,why){ex.skip=true;note(ex,'SKIP TODAY - '+why);}
+
+GM.transformOff=function(session,ctx){
+  const exs=session.exercises||[];let n=0;
+  // MD-1 keeps ONE lower-body main lift (the first); later leg lifts sit out
+  const mainLeg=exs.find(e=>RX.blockOf(e)==='Primary Strength'&&!upperOrTrunk(e)&&!e.vald);
+  exs.forEach(ex=>{
+    if(ex.vald)return;                 // tests never change
+    stamp(ex);n++;
+    const b=RX.blockOf(ex), nm=ex.name||'', up=upperOrTrunk(ex);
+    switch(ctx){
+      case 'OFF-MD0':
+        if(b==='Speed / COD'||b==='Plyo / Reactive'||b==='Conditioning'){skip(ex,'off-season, game earlier today');break;}
+        if(b==='Movement Prep'){if(PLYO_PREP.test(nm))skip(ex,'game earlier today');else note(ex,'Post-game: as written, easy');break;}
+        if(up){if(b==='Primary Strength')cap(ex,7);note(ex,'Off-season post-game: upper body / trunk as written'+(b==='Primary Strength'?', RPE 7 cap':''));break;}
+        if(LEG_ISO.test(nm)&&!HARD_ECC.test(nm)){sets(ex,x=>Math.ceil(x/2));ex.rpe='5';note(ex,'Post-game: half dose, RPE 5');break;}
+        skip(ex,'legs recover today');break;
+      case 'OFF-MD+1':
+        if(b==='Speed / COD'||b==='Plyo / Reactive'||b==='Conditioning'){skip(ex,'off-season MD+1 recovery');break;}
+        if(b==='Movement Prep'){if(PLYO_PREP.test(nm))skip(ex,'MD+1');else note(ex,'MD+1: as written');break;}
+        if(up){note(ex,'Off-season MD+1: upper body / trunk as written');break;}
+        if(b==='Primary Strength'){sets(ex,()=>2);ex.rpe='5';note(ex,'MD+1: 2 technique sets, RPE 5');break;}
+        if(HARD_ECC.test(nm)){skip(ex,'MD+1: no heavy eccentrics the day after a game');break;}
+        if(LEG_ISO.test(nm)){sets(ex,x=>Math.ceil(x/2));ex.rpe='5';note(ex,'MD+1: half dose, RPE 5');break;}
+        skip(ex,'MD+1 legs recover');break;
+      case 'OFF-MD-1':
+        if(b==='Speed / COD'){sets(ex,x=>Math.min(x,2));reps(ex,x=>Math.min(x,3));note(ex,'Off-season MD-1 primer: 2 short sets max, full intent');break;}
+        if(b==='Plyo / Reactive'){sets(ex,()=>1);reps(ex,x=>Math.min(x,3));note(ex,'MD-1 primer: 1 low-volume set');break;}
+        if(b==='Primary Strength'){if(up){sets(ex,x=>x-1);cap(ex,7);note(ex,'Off-season MD-1: 1 set off, RPE 7 cap');}else if(ex!==mainLeg){skip(ex,'MD-1: main lift only');}else{sets(ex,x=>Math.min(x,2));reps(ex,x=>Math.min(x,3));cap(ex,7);if(!/6/.test(String(ex.rpe)))ex.rpe='6-7';note(ex,'Off-season MD-1: 2 fast sets of 3 or fewer, RPE 6-7');}break;}
+        if(b==='Conditioning'){skip(ex,'MD-1 keep fresh');break;}
+        if(b==='Movement Prep'){note(ex,'MD-1: as written');break;}
+        if(up){sets(ex,x=>x-1);note(ex,'Off-season MD-1: upper body / trunk 1 set off');break;}
+        skip(ex,'MD-1: legs stay fresh');break;
+      case 'OFF-MD-2':
+        if(b==='Speed / COD'){note(ex,'Off-season MD-2: keep - max-speed exposure');break;}
+        if(b==='Plyo / Reactive'){reps(ex,x=>Math.max(1,Math.round(x*2/3)));note(ex,'MD-2: plyo volume cut a third');break;}
+        if(b==='Primary Strength'){cap(ex,8);note(ex,'Off-season MD-2: sets kept, RPE 8 cap');break;}
+        if(b==='Conditioning'){sets(ex,x=>Math.ceil(x/2));note(ex,'Off-season MD-2: conditioning halved');break;}
+        if(b==='Accessory'&&!up){sets(ex,x=>x-1);note(ex,'MD-2: leg accessory 1 set off');break;}
+        note(ex,'MD-2: as written');break;
+      case 'OFF-WITHIN72':
+        if(b==='Primary Strength'){cap(ex,8);note(ex,'Off-season, game within 72 h: kept, RPE 8 cap');break;}
+        if(b==='Speed / COD'){note(ex,'Game within 72 h: as written, full rest');break;}
+        if(b==='Plyo / Reactive'){sets(ex,x=>x-1);note(ex,'Game within 72 h: 1 set off');break;}
+        if(b==='Conditioning'){skip(ex,'game within 72 h');break;}
+        if(b==='Accessory'&&!up){sets(ex,x=>x-1);note(ex,'Game within 72 h: leg accessory 1 set off');break;}
+        note(ex,'Game within 72 h: as written');break;
+      case 'OFF-HEAVY':
+        if(b==='Speed / COD'){reps(ex,x=>Math.max(1,Math.round(x*2/3)));note(ex,'Heavy game load: reps cut a third, same intent');break;}
+        if(b==='Plyo / Reactive'){reps(ex,x=>Math.max(1,Math.round(x/2)));note(ex,'Heavy game load: plyo halved');break;}
+        if(b==='Primary Strength'){if(up){note(ex,'Heavy game load: upper body as written');}else{sets(ex,x=>x-1);note(ex,'Heavy game load: intensity kept, 1 set off');}break;}
+        if(b==='Conditioning'){skip(ex,'heavy game load');break;}
+        if(b==='Accessory'&&!up){sets(ex,x=>x-1);note(ex,'Heavy game load: leg accessory 1 set off');break;}
+        note(ex,'Heavy game load: as written');break;
+      case 'OFF-LOWREADY':
+        if(b==='Speed / COD'||b==='Plyo / Reactive'){reps(ex,x=>Math.max(1,Math.round(x*2/3)));note(ex,'Low readiness: reps cut a third');break;}
+        if(b==='Primary Strength'){if(up){sets(ex,x=>x-1);note(ex,'Low readiness: 1 set off');}else{sets(ex,x=>x-1);note(ex,'Low readiness: intensity kept, 1 set off');}break;}
+        if(b==='Conditioning'){sets(ex,x=>Math.ceil(x/2));note(ex,'Low readiness: conditioning halved');break;}
+        if(b==='Accessory'&&!up){sets(ex,x=>x-1);note(ex,'Low readiness: 1 set off');break;}
+        note(ex,'Low readiness: as written');break;
+    }
+  });
+  session._gm={ctx,at:new Date().toISOString(),note:GM.CTX[ctx].note};
+  return n;
+};
+const _prevT=GM.transform;
+GM.transform=function(session,ctx){
+  if(/^OFF-/.test(ctx))return GM.transformOff(session,ctx);
+  return _prevT.apply(this,arguments);
+};
+
+/* menu: two groups, the athlete's own season first and pre-selected */
+GM.optionsHtml=function(athId){
+  const a=S.athletes.find(x=>x.id===athId);
+  const season=a&&RX.season?RX.season(a):'In-Season';
+  const offFirst=/off|pre/i.test(season)&&!/in-season/i.test(season);
+  const grp=(title,keys)=>'<optgroup label="'+title+'">'+keys.map(k=>'<option value="'+k+'">'+esc(GM.CTX[k].label.replace(/^Off-season: (.)/,(m,c)=>c.toUpperCase()))+'</option>').join('')+'</optgroup>';
+  const all=Object.keys(GM.CTX);
+  const ins=all.filter(k=>!/^OFF-/.test(k)), offs=all.filter(k=>/^OFF-/.test(k));
+  return offFirst?grp('Off-season',offs)+grp('In-season',ins):grp('In-season',ins)+grp('Off-season',offs);
+};
+
+/* swap the menus in the program panel and the group view */
+const swapSel=(sel,athId)=>{if(!sel||sel.dataset.off==='1')return;sel.innerHTML=GM.optionsHtml(athId);sel.dataset.off="1";};
+const _prevPanel=GM.panel;
+GM.panel=function(athId){const r=_prevPanel.apply(this,arguments);try{swapSel(document.getElementById('rx-gm-ctx'),athId);}catch(e){}return r;};
+if(RX.gv&&RX.gv.render){
+  const _prevGV=RX.gv.render;
+  RX.gv.render=function(){
+    const r=_prevGV.apply(this,arguments);
+    try{
+      const g=RX._grpView&&RX.grp.get(RX._grpView);
+      const lead=g&&RX.gv.withProg(g)[0];
+      if(lead)swapSel(document.getElementById('gv-gm'),lead.id);
+    }catch(e){}
+    return r;
+  };
+}
+})();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust','color:#7aa2c4');
 })();
 
 </script>
