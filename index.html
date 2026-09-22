@@ -5522,7 +5522,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 
 <script data-src="evidence-dropin.js">
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — EVIDENCE LAYER DROP-IN  v2.4
+   COACH OS — EVIDENCE LAYER DROP-IN  v2.5
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: LAST (after performance-dropin.js).
@@ -5579,7 +5579,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'2.4'};
+const RX={ver:'2.5'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -9357,6 +9357,46 @@ GV.CSS=`
 #rx-grp-view .gv-add{width:100%;margin-top:4px;padding:10px 0;background:transparent;border:1px dashed rgba(255,255,255,.15);border-radius:4px;color:var(--gv-dim);font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;}
 #rx-grp-view .gv-add:hover{color:var(--gv-mut);border-color:rgba(255,255,255,.3);}
 @media (max-width:600px){#rx-grp-view .gv-body{padding:12px;}#rx-grp-view .gv-name{font-size:24px;}}
+/* group view = full width, program is the focus */
+#pg-athletes .g2.gv-on{grid-template-columns:minmax(0,1fr) !important;grid-template-rows:auto auto !important;}
+#pg-athletes .g2.gv-on>#ath-list{grid-column:1 !important;grid-row:1 !important;}
+#pg-athletes .g2.gv-on>#ath-sub{grid-column:1 !important;grid-row:2 !important;}
+#pg-athletes .g2.gv-on #ath-list>.ath-card{display:none !important;}
+#rx-grp-view{container-type:inline-size;}
+#gv-gcard{--gv-card:#111311;--gv-line:rgba(255,255,255,.095);--gv-ink:#f4f1ec;--gv-mut:#969792;background:var(--gv-card);border:1px solid rgba(225,59,49,.35);border-radius:12px;padding:14px 16px;margin:0 0 12px;cursor:pointer;}
+#gv-gcard:hover{border-color:var(--brand);}
+#gv-gcard.on{cursor:default;border-color:var(--gv-line);padding:16px 18px;}
+#gv-gcard .gv-gtop{display:flex;align-items:center;gap:14px;}
+#gv-gcard .gv-stack{display:flex;}
+#gv-gcard .gv-stack .gv-av{width:38px;height:38px;border-radius:50%;background:#2c3a30;color:#b8d3bf;display:flex;align-items:center;justify-content:center;font:600 12px var(--mono);border:2px solid var(--gv-card);}
+#gv-gcard .gv-stack .gv-av+.gv-av{margin-left:-12px;}
+#gv-gcard .gv-gtitle{flex:1;min-width:0;}
+#gv-gcard .gv-eyebrow{font:500 10px var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--brand);}
+#gv-gcard .gv-name{font:700 22px/1.15 var(--disp);letter-spacing:-.02em;color:var(--gv-ink);margin-top:3px;}
+#gv-gcard.on .gv-name{font-size:28px;}
+#gv-gcard .gv-open{font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--brand);border:1px solid rgba(225,59,49,.4);border-radius:14px;padding:5px 10px;white-space:nowrap;}
+#gv-gcard .gv-flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+#gv-gcard .gv-mem{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 8px;}
+#gv-gcard .gv-chip{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 5px;border:1px solid var(--gv-line);border-radius:22px;background:transparent;color:var(--gv-ink);font:600 12px var(--disp);cursor:pointer;}
+#gv-gcard .gv-chip .gv-av{width:24px;height:24px;border-radius:50%;background:#2c3a30;color:#b8d3bf;display:flex;align-items:center;justify-content:center;font:600 9px var(--mono);}
+#gv-gcard .gv-notes{font:400 11px/1.5 var(--disp);color:var(--gv-mut);margin-bottom:10px;}
+#gv-gcard .gv-acts{display:flex;flex-wrap:wrap;gap:8px;}
+#rx-grp-view details.gv-sbs>summary{cursor:pointer;list-style:none;}
+#rx-grp-view details.gv-sbs>summary::-webkit-details-marker{display:none;}
+#rx-grp-view details.gv-sbs:not([open])>summary{border-bottom:none;}
+#rx-grp-view .gv-sum{font:500 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gv-dim);}
+#rx-grp-view .gv-sbs>summary h4::before{content:'+ ';color:var(--gv-dim);}
+#rx-grp-view .gv-sbs[open]>summary h4::before{content:'– ';}
+#rx-grp-view #gv-prog>.gv-strip{padding:14px 18px;}
+#rx-grp-view #gv-prog>.gv-strip h4{font-size:15px;}
+#rx-grp-view #gv-prog>.gv-body{padding:18px;}
+@container (min-width:760px){
+  #rx-grp-view .gv-row{display:grid;grid-template-columns:minmax(200px,26%) minmax(0,1fr);gap:16px;align-items:start;padding:14px 16px;}
+  #rx-grp-view .gv-rh{flex-direction:column;align-items:stretch;margin:0;gap:10px;}
+  #rx-grp-view .gv-rh .gv-rb{display:flex;gap:6px;}
+  #rx-grp-view .gv-rh input.gv-exn{flex:none;font-size:14px !important;}
+  #rx-grp-view .gv-cols{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));}
+}
 `;
 
 GV.mountCSS=function(){
@@ -9540,27 +9580,16 @@ GV.render=function(){
   const q=s=>"'"+String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'";
   const gidQ=q(g.id);
 
-  // header
-  let html='<div class="gv-card"><div class="gv-body">'
-    +'<div class="gv-eyebrow">Group · '+mem.length+' athletes</div>'
-    +'<div class="gv-name">'+esc(g.name)+'</div>'
-    +'<div class="gv-mem">'+mem.map(a=>'<button type="button" class="gv-chip" onclick="RX.gv.openAth('+q(a.id)+')"><span class="gv-av">'+esc(GV.initials(a))+'</span>'+esc(an(a))+'</button>').join('')+'</div>'
-    +(g.notes?'<div class="gv-notes">'+esc(g.notes)+'</div>':'')
-    +'<div class="gv-acts">'
-      +'<button class="btn btn-sm" onclick="RX.grp.open('+gidQ+')">Edit group</button>'
-      +'<button class="btn btn-sm" onclick="RX.grp.sheet('+gidQ+','+(st.wk||'null')+')">Floor sheet</button>'
-      +'<button class="btn btn-sm" onclick="RX.grp.buildAll('+gidQ+')">Build for group</button>'
-      +'<button class="btn btn-sm" onclick="RX.bridge.tpl.open()">Assign template</button>'
-    +'</div></div></div>';
+  let html='';
 
   // side by side numbers (a table: identity is by column header text, no color)
   const {ms,keep}=GV.metricRows(mem);
-  html+='<div class="gv-card"><div class="gv-strip"><h4>Side by side</h4></div><div class="gv-body" style="overflow-x:auto;">'
+  let sbs='<details class="gv-card gv-sbs"'+(st.sbsOpen?' open':'')+' ontoggle="RX.gv.state['+gidQ+'].sbsOpen=this.open"><summary class="gv-strip"><h4>Side by side</h4><span class="gv-sum">VALD, readiness and program status</span></summary><div class="gv-body" style="overflow-x:auto;">'
     +'<table class="gv-cmp"><thead><tr><th></th>'+mem.map(a=>'<th>'+esc(a.first)+'</th>').join('')+'</tr></thead><tbody>'
     +(ms[0]||[]).map((row,i)=>keep[i]?'<tr><td>'+esc(row[0])+'</td>'+ms.map(m=>'<td>'+esc(m[i][1])+'</td>').join('')+'</tr>':'').join('')
-    +'</tbody></table></div></div>';
+    +'</tbody></table></div></details>';
 
-  // group program
+  // group program (the main thing on the page)
   html+='<div class="gv-card" id="gv-prog"><div class="gv-strip"><h4>Group program</h4>';
   if(weeks.length){
     html+='<div class="gv-pick">'
@@ -9599,8 +9628,8 @@ GV.render=function(){
         +(same?'<input class="gv-exn" value="'+esc(any.ex.name)+'" aria-label="Exercise name (whole group)" onchange="RX.gv.rename('+gidQ+','+st.wk+','+dayQ+','+rk+',this.value)">'
               :sameBase?'<span class="gv-diff" style="font-style:normal;font-weight:600;color:var(--gv-ink);font-size:13px;">'+esc(String(any.ex.name).replace(/\s*\([^)]*\)/g,''))+'</span>'
               :'<span class="gv-diff">Different exercise per athlete</span>')
-        +(cols.length>1?'<button class="gv-rbtn" title="Copy sets, reps, tempo, RPE and rest from the first athlete to the others" onclick="RX.gv.match('+gidQ+','+st.wk+','+dayQ+','+rk+')">Match</button>':'')
-        +'<button class="gv-rbtn gv-del" onclick="RX.gv.remove('+gidQ+','+st.wk+','+dayQ+','+rk+')">Remove</button></div>'
+        +'<span class="gv-rb">'+(cols.length>1?'<button class="gv-rbtn" title="Copy sets, reps, tempo, RPE and rest from the first athlete to the others" onclick="RX.gv.match('+gidQ+','+st.wk+','+dayQ+','+rk+')">Match</button>':'')
+        +'<button class="gv-rbtn gv-del" onclick="RX.gv.remove('+gidQ+','+st.wk+','+dayQ+','+rk+')">Remove</button></span></div>'
         +'<div class="gv-cols">'+r.cells.map((c,i)=>{
           const a=cols[i];
           if(!c)return '<div class="gv-col"><div class="gv-who"><b>'+esc(a.first)+'</b></div><div class="gv-none">Not in '+esc(a.first)+'\'s day</div></div>';
@@ -9613,12 +9642,13 @@ GV.render=function(){
     html+='<button class="gv-add" onclick="RX.gv.addAll('+gidQ+','+st.wk+','+q(st.day)+')">+ Exercise for the group</button>';
   }
   html+='</div></div>';
-  host.innerHTML=html;
+  host.innerHTML=html+sbs;
+  GV.syncCard();
 };
 
 GV.pick=function(gid,k,v){const st=GV.state[gid]||(GV.state[gid]={});st[k]=v;if(k==='wk')st.day=null;GV.render();};
 GV.show=function(gid){RX._grpView=gid||null;GV.render();};
-GV.hide=function(){RX._grpView=null;const grid=GV.grid();if(grid)grid.classList.remove('gv-on');};
+GV.hide=function(){RX._grpView=null;const grid=GV.grid();if(grid)grid.classList.remove('gv-on');try{GV.syncCard();}catch(e){}};
 GV.openAth=function(athId){GV.hide();if(typeof showAthDetail==='function')showAthDetail(athId);GV.chip();};
 GV.rack=function(gid){
   const g=RX.grp.get(gid), st=GV.state[gid]||{}; if(!g)return;
@@ -9638,16 +9668,47 @@ GV.adjust=function(gid,revert){
 };
 
 /* "Group view" chip in the strip when a group is filtered but an athlete is open */
+/* one combined card for the group in the roster. In group view it is the
+   header (members, flags, actions); with one athlete open it is the way back. */
+GV.cardHtml=function(g,on){
+  const mem=GV.members(g), q=x=>"'"+String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'", gidQ=q(g.id);
+  const st=GV.state[g.id]||{};
+  const sports=[...new Set(mem.map(a=>a.sport).filter(Boolean))].join(' / ');
+  const flags=mem.flatMap(a=>(typeof getFlags==='function'?getFlags(a):[]).map(f=>'<span class="flag flag-'+esc(f.t)+'">'+esc(a.first)+' · '+esc(f.l)+'</span>')).join('');
+  return '<div class="gv-gtop">'
+      +'<div class="gv-stack">'+mem.slice(0,4).map(a=>'<span class="gv-av">'+esc(GV.initials(a))+'</span>').join('')+'</div>'
+      +'<div class="gv-gtitle"><div class="gv-eyebrow">Group · '+mem.length+' athletes'+(sports?' · '+esc(sports):'')+'</div>'
+      +'<div class="gv-name">'+esc(g.name)+'</div></div>'
+      +(on?'':'<span class="gv-open">Group view</span>')
+    +'</div>'
+    +(flags?'<div class="gv-flags">'+flags+'</div>':'')
+    +(on?'<div class="gv-mem">'+mem.map(a=>'<button type="button" class="gv-chip" onclick="event.stopPropagation();RX.gv.openAth('+q(a.id)+')"><span class="gv-av">'+esc(GV.initials(a))+'</span>'+esc(an(a))+'</button>').join('')+'</div>'
+      +(g.notes?'<div class="gv-notes">'+esc(g.notes)+'</div>':'')
+      +'<div class="gv-acts">'
+        +'<button class="btn btn-sm" onclick="RX.grp.open('+gidQ+')">Edit group</button>'
+        +'<button class="btn btn-sm" onclick="RX.grp.sheet('+gidQ+','+(st.wk||'null')+')">Floor sheet</button>'
+        +'<button class="btn btn-sm" onclick="RX.grp.buildAll('+gidQ+')">Build for group</button>'
+        +'<button class="btn btn-sm" onclick="RX.bridge.tpl.open()">Assign template</button>'
+      +'</div>':'');
+};
+GV.syncCard=function(){
+  const list=document.getElementById('ath-list'); if(!list)return;
+  let c=document.getElementById('gv-gcard');
+  const f=RX._grpFilter, g=f?RX.grp.get(f):null;
+  if(!g){if(c)c.remove();return;}
+  const on=RX._grpView===f;
+  if(!c){c=document.createElement('div');c.id='gv-gcard';}
+  if(c.parentElement!==list||list.firstElementChild!==c)list.insertBefore(c,list.firstChild);
+  c.className='gv-gcard'+(on?' on':'');
+  c.setAttribute('role',on?'region':'button');
+  c.tabIndex=on?-1:0;
+  c.onclick=on?null:()=>GV.show(f);
+  c.onkeydown=on?null:ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();GV.show(f);}};
+  c.innerHTML=GV.cardHtml(g,on);
+};
 GV.chip=function(){
-  const strip=document.getElementById('rx-grp-strip'); if(!strip)return;
-  let b=document.getElementById('gv-chip');
-  const f=RX._grpFilter;
-  if(!f){if(b)b.remove();return;}
-  if(!b){b=document.createElement('button');b.type='button';b.id='gv-chip';b.textContent='Group view';
-    b.style.cssText='padding:5px 10px;border-radius:14px;font-size:11px;cursor:pointer;border:1px solid var(--brand);background:transparent;color:var(--brand);';
-    b.onclick=()=>GV.show(RX._grpFilter);}
-  if(b.parentElement!==strip)strip.appendChild(b);
-  b.hidden=RX._grpView===f;
+  const old=document.getElementById('gv-chip'); if(old)old.remove();
+  GV.syncCard();
 };
 
 /* hooks */
