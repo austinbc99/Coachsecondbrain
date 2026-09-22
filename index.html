@@ -5522,7 +5522,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 
 <script data-src="evidence-dropin.js">
 /* ═══════════════════════════════════════════════════════════════════════
-   COACH OS — EVIDENCE LAYER DROP-IN  v2.5
+   COACH OS — EVIDENCE LAYER DROP-IN  v2.7
    Coach Austin C., ATC · Head Coach, FitClub CT
 
    LOAD ORDER: LAST (after performance-dropin.js).
@@ -5579,7 +5579,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'2.5'};
+const RX={ver:'2.7'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -7984,7 +7984,7 @@ SV.saveWell=function(athId,wi,di){
   save();
   if(e.score<60||e.pain){
     if(confirm('Readiness '+e.score+(e.pain?' with pain ('+e.painArea+')':'')+'. Lighten today (1 set off loaded work, speed/plyo reps cut a third)?')){
-      RX.gm.apply(athId,wi,di,(RX.season&&/off|pre/i.test(RX.season(ath))&&!/in-season/i.test(RX.season(ath))&&RX.gm.CTX['OFF-LOWREADY'])?'OFF-LOWREADY':'LOWREADY');
+      RX.gm.apply(athId,wi,di,'LOWREADY');
       SV.states[athId+'|'+wi+'|'+di]=null;delete SV.states[athId+'|'+wi+'|'+di];
     }
   }
@@ -9881,7 +9881,575 @@ if(RX.gv&&RX.gv.render){
 }
 })();
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust','color:#7aa2c4');
+/* ═══════════════ SECTION 22 — READINESS PER ATHLETE + "OFF-SEASON: READY" ═
+   1. The adjust menu is simplified to what the coach asked for:
+        Off-season — ready to go (train as written)
+        In-season / readiness — the 7 original choices
+      "Off-season" changes nothing and clears any earlier adjustment on
+      that day. The 7 off-season variants from v2.4 stay in the engine
+      (so a day already adjusted with one still shows its note and
+      reverts exactly) but are no longer offered.
+   2. Readiness check-in drops back to the in-season low-readiness
+      adjustment for everyone.
+   3. Group view gets a "Today" card: one row per athlete with her
+      readiness (5-question check-in, inline), her own choice from the
+      menu and her own Apply. Low readiness (<60 or pain) pre-selects
+      "Low readiness today" for that athlete only. "Adjust group" still
+      applies one choice to everyone. */
+
+(function(){
+const GM=RX.gm, GV=RX.gv, SV=RX.bridge&&RX.bridge.sv;
+if(!GM||!GM.CTX)return;
+
+GM.CTX.OFF={label:'Off-season: ready to go (train as written)',note:'Off-season: ready to go. Everything as written.'};
+const _t=GM.transform;
+GM.transform=function(session,ctx){
+  if(ctx==='OFF'){ // GM.apply already reverted the session: stamp the note, change nothing
+    session._gm={ctx:'OFF',at:new Date().toISOString(),note:GM.CTX.OFF.note};
+    return 0;
+  }
+  return _t.apply(this,arguments);
+};
+GM.MENU_IN=['MD0','MD+1','MD-1','MD-2','WITHIN72','HEAVY','LOWREADY'];
+GM.isOff=function(a){const s=a&&RX.season?RX.season(a):'';return /off|pre/i.test(s)&&!/in-season/i.test(s);};
+GM.optionsHtml=function(athId,selected){
+  const a=S.athletes.find(x=>x.id===athId);
+  const sel=selected||(GM.isOff(a)?'OFF':'MD0');
+  const opt=k=>GM.CTX[k]?'<option value="'+k+'"'+(k===sel?' selected':'')+'>'+esc(k==='OFF'?'Off-season: ready to go':GM.CTX[k].label)+'</option>':'';
+  return '<optgroup label="Off-season">'+opt('OFF')+'</optgroup>'
+    +'<optgroup label="In-season / readiness">'+GM.MENU_IN.map(opt).join('')+'</optgroup>';
+};
+/* menus already built by v2.4 code: rebuild with the new list */
+const rebuild=(el,athId)=>{if(!el)return;el.innerHTML=GM.optionsHtml(athId);el.dataset.off='1';};
+const _panel=GM.panel;
+GM.panel=function(athId){const r=_panel.apply(this,arguments);try{rebuild(document.getElementById('rx-gm-ctx'),athId);}catch(e){}return r;};
+
+/* ---- group view: per-athlete readiness + choice ---- */
+if(!GV||!SV)return;
+GV.TODAY_CSS=`
+#rx-grp-view .gv-today{border:1px solid var(--gv-line2);border-radius:8px;background:var(--gv-day);margin:0 0 16px;}
+#rx-grp-view .gv-today>h5{margin:0;padding:10px 14px;border-bottom:1px solid var(--gv-line2);font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gv-mut);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+#rx-grp-view .gv-trow{display:grid;grid-template-columns:minmax(110px,1fr) minmax(120px,1fr) minmax(0,2fr) auto;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gv-line2);}
+#rx-grp-view .gv-trow:last-child{border-bottom:none;}
+#rx-grp-view .gv-tname{font:600 13px var(--disp);color:var(--gv-ink);}
+#rx-grp-view .gv-tname small{display:block;font:500 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--gv-dim);margin-top:2px;}
+#rx-grp-view .gv-rdy{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+#rx-grp-view .gv-score{font:700 15px var(--mono);padding:3px 8px;border-radius:6px;border:1px solid var(--gv-line);}
+#rx-grp-view .gv-score.ok{color:var(--lz-good,#58ca86);border-color:rgba(88,202,134,.4);}
+#rx-grp-view .gv-score.mid{color:var(--lz-warn,#e8c547);border-color:rgba(232,197,71,.4);}
+#rx-grp-view .gv-score.low{color:var(--lz-bad,#ef736b);border-color:rgba(239,115,107,.45);}
+#rx-grp-view .gv-tstate{font:400 10px/1.4 var(--disp);color:var(--gv-mut);}
+#rx-grp-view .gv-trow select{width:100% !important;min-width:0;font-size:12px !important;padding:7px 8px !important;background:var(--gv-field);border-color:var(--gv-line2);}
+#rx-grp-view .gv-ci{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;padding:4px 0 2px;}
+#rx-grp-view .gv-ci .gv-q{display:flex;flex-direction:column;gap:4px;font:500 9px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--gv-dim);}
+#rx-grp-view .gv-ci .gv-seg{display:flex;gap:4px;}
+#rx-grp-view .gv-ci .gv-seg button{flex:1;min-width:0;padding:6px 0;border:1px solid var(--gv-line);border-radius:5px;background:transparent;color:var(--gv-mut);font:600 12px var(--mono);cursor:pointer;}
+#rx-grp-view .gv-ci .gv-seg button.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+#rx-grp-view .gv-ci input{font-size:12px !important;padding:6px 8px !important;}
+#rx-grp-view .gv-ci .gv-cia{display:flex;gap:8px;align-items:end;}
+@media (max-width:700px){#rx-grp-view .gv-trow{grid-template-columns:1fr auto;}#rx-grp-view .gv-trow>div:nth-child(3){grid-column:1/-1;grid-row:3;}#rx-grp-view .gv-trow>button{grid-column:2;grid-row:1;}#rx-grp-view .gv-trow>.gv-rdy{grid-column:1/-1;grid-row:2;}}
+`;
+GV.mountToday=function(){
+  if(document.getElementById('gv-today-css'))return;
+  const s=document.createElement('style');s.id='gv-today-css';s.textContent=GV.TODAY_CSS;(document.head||document.documentElement).appendChild(s);
+};
+GV.scoreCls=s=>s>=75?'ok':s>=60?'mid':'low';
+GV.open={};   // athId -> check-in expanded
+
+GV.todayHtml=function(g,st){
+  const mem=GV.withProg(g); if(!mem.length)return '';
+  const q=x=>"'"+String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'";
+  const rows=mem.map(a=>{
+    const L=GV.locate(a.id,st.wk,st.day);
+    const gm=L?((L.d.sessions||[])[0]||{})._gm:null;
+    const well=SV.wellnessToday(a);
+    const low=well&&(well.score<60||well.pain);
+    const pick=gm&&GM.CTX[gm.ctx]&&(gm.ctx==='OFF'||GM.MENU_IN.includes(gm.ctx))?gm.ctx:(low?'LOWREADY':null);
+    const rdy=well
+      ?'<span class="gv-score '+GV.scoreCls(well.score)+'" title="Readiness today">'+well.score+'</span>'+(well.pain?'<span class="flag flag-red">pain: '+esc(well.painArea||'yes')+'</span>':'')
+        +'<button class="gv-rbtn" onclick="RX.gv.toggleCI('+q(a.id)+')">Redo</button>'
+      :'<button class="gv-rbtn" onclick="RX.gv.toggleCI('+q(a.id)+')">Check in</button>';
+    const state=gm?esc(gm.ctx==='OFF'?'Ready to go: as written':(GM.CTX[gm.ctx]||{}).label||gm.ctx):(GM.isOff(a)?'Off-season: as written':'As written');
+    let ci='';
+    if(GV.open[a.id]){
+      ci='<div class="gv-ci" data-ci="'+esc(a.id)+'">'
+        +SV.WQ.map(([k,l])=>'<div class="gv-q">'+esc(l)+'<div class="gv-seg" data-q="'+k+'">'+[1,2,3,4,5].map(v=>'<button type="button" data-v="'+v+'" onclick="RX.gv.pickQ(this)">'+v+'</button>').join('')+'</div></div>').join('')
+        +'<div class="gv-q">Pain anywhere?<div class="gv-cia"><input class="gv-pain" placeholder="area, or leave blank"><button class="btn btn-sm btn-primary" onclick="RX.gv.saveCI('+q(g.id)+','+q(a.id)+')">Save</button></div></div>'
+        +'</div>';
+    }
+    return '<div class="gv-trow" data-ath="'+esc(a.id)+'">'
+      +'<div class="gv-tname">'+esc(a.first)+'<small>'+esc(RX.season?RX.season(a):'')+'</small></div>'
+      +'<div class="gv-rdy">'+rdy+'</div>'
+      +'<div><select aria-label="'+esc(a.first)+' today" class="gv-tsel">'+GM.optionsHtml(a.id,pick)+'</select><div class="gv-tstate">Now: '+state+'</div></div>'
+      +'<button class="btn btn-sm" onclick="RX.gv.applyOne('+q(g.id)+','+q(a.id)+',this.closest(\'.gv-trow\').querySelector(\'select\').value)">Apply</button>'
+      +ci+'</div>';
+  }).join('');
+  return '<div class="gv-today"><h5><span>Today · readiness and adjustment per athlete</span><span>Week '+st.wk+' · '+esc(st.day)+'</span></h5>'+rows+'</div>';
+};
+GV.toggleCI=function(athId){GV.open[athId]=!GV.open[athId];GV.render();};
+GV.pickQ=function(btn){const seg=btn.parentElement;seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===btn));seg.dataset.val=btn.dataset.v;};
+GV.saveCI=function(gid,athId,vals){
+  const a=S.athletes.find(x=>x.id===athId); if(!a)return null;
+  const e={date:today()};
+  if(vals){SV.WQ.forEach(([k])=>{e[k]=+vals[k];});if(vals.pain){e.pain=true;e.painArea=vals.pain;}}
+  else{
+    const box=document.querySelector('#rx-grp-view .gv-ci[data-ci="'+athId+'"]'); if(!box)return null;
+    let miss=0;SV.WQ.forEach(([k])=>{const sg=box.querySelector('.gv-seg[data-q="'+k+'"]');const v=sg&&sg.dataset.val;if(v)e[k]=+v;else miss++;});
+    if(miss){if(typeof toast==='function')toast('Answer all five for '+a.first);return null;}
+    const pain=(box.querySelector('.gv-pain')||{}).value||''; if(pain.trim()){e.pain=true;e.painArea=pain.trim();}
+  }
+  e.score=SV.wellnessScore(e);
+  if(!a.wellness)a.wellness=[];
+  a.wellness=a.wellness.filter(x=>x.date!==e.date).concat([e]).slice(-120);
+  save();
+  GV.open[athId]=false;
+  const st=GV.state[gid]||{};
+  if(e.score<60||e.pain){
+    if(confirm(a.first+': readiness '+e.score+(e.pain?' with pain ('+e.painArea+')':'')+'. Lighten '+a.first+'\'s '+st.day+' (1 set off loaded work, speed and plyo reps cut a third)?'))GV.applyOne(gid,athId,'LOWREADY',true);
+  }
+  GV.render();
+  return e;
+};
+GV.applyOne=function(gid,athId,ctx,quiet){
+  const st=GV.state[gid]||{};
+  const L=GV.locate(athId,st.wk,st.day); if(!L||!GM.CTX[ctx])return false;
+  GM.apply(athId,L.wi,L.di,ctx);
+  const a=S.athletes.find(x=>x.id===athId);
+  if(!quiet){GV.render();if(typeof toast==='function')toast(a.first+': '+(ctx==='OFF'?'ready to go, as written':GM.CTX[ctx].label));}
+  return true;
+};
+
+const _render=GV.render;
+GV.render=function(){
+  const r=_render.apply(this,arguments);
+  try{
+    const g=RX._grpView&&RX.grp.get(RX._grpView); if(!g)return r;
+    GV.mountToday();
+    const st=GV.state[g.id]||{};
+    const body=document.querySelector('#gv-prog>.gv-body'); if(!body||st.wk==null)return r;
+    const old=body.querySelector('.gv-today'); if(old)old.remove();
+    const wrap=document.createElement('div');wrap.innerHTML=GV.todayHtml(g,st);
+    if(wrap.firstElementChild)body.insertBefore(wrap.firstElementChild,body.firstChild);
+    // group-wide menu: same simplified list
+    const lead=GV.withProg(g)[0]; const gsel=document.getElementById('gv-gm');
+    if(lead&&gsel){gsel.innerHTML=GM.optionsHtml(lead.id);gsel.dataset.off='1';}
+    const acts=gsel&&gsel.parentElement; if(acts&&!acts.querySelector('.gv-allnote')){const n=document.createElement('span');n.className='gv-allnote gv-tstate';n.textContent='Same choice for everyone:';gsel.before(n);}
+  }catch(e){console.warn('[RX] group today',e);}
+  return r;
+};
+})();
+
+/* ═══════════════ SECTION 23 — SQUAT + SPRINT ASSESSMENT → DEEP PROGRAM ════
+   Brings the original Second Brain "Sprint Lab" into the Film Room and adds
+   the squat side, then closes the loop into the program:
+
+   ASSESS  - Squat: overhead squat (NASM-style screen), bodyweight, goblet,
+             front, single-leg squat. Sprint: acceleration, drive-to-upright
+             transition, max velocity, deceleration (Sprint Lab phases).
+           - Angle keys (the numbers you measure in OnForm / Hudl / Coach's
+             Eye) are scored locally against screening thresholds — works with
+             no API key and no video. Frames + key → the AI read adds grades,
+             categories and cues; your measured keys always win over the AI's
+             estimates (2-D angles from stills are approximate).
+           - Fixed fault list, so every fault maps to a known fix.
+   PROGRAM - "Add fixes to program": each fault's correctives go into the
+             athlete's next unlogged weeks (default 3, up to the retest).
+             Squat fixes → Movement Prep; sprint drills → front of Speed / COD.
+             Max 2 per family per session. Setup + Purpose only. Tagged so
+             "Remove fixes" takes them back out. Logged weeks are never touched
+             (inserting would shift the saved actuals).
+           - Retest: compares this analysis with the athlete's previous one of
+             the same movement (score change + faults fixed / still there).
+
+   Thresholds (screening, not diagnosis):
+   - Squat trunk vs tibia: trunk leaning >15° more than the shin = forward lean
+     (warn), >25° = fail. Ideal: trunk roughly parallel to the shin.
+   - Knee FPPA (2-D frontal-plane projection angle, reliable on video — Munro
+     2012): >10° warn, >15° fail; left-right gap >5° = asymmetric shift.
+   - Sprint acceleration first steps: trunk lean from vertical <25° = popping
+     up (warn), <15° fail; shin lean <25° = too vertical at touchdown.
+   - Max velocity: trunk >12° forward or >5° back = warn; foot landing well in
+     front of the hips = overstride. (Haugen 2019 review; Moura 2024 phase
+     determinants.) */
+
+(function(){
+if(typeof MG==='undefined')return;
+const AS={ver:'1.0'};
+RX.assess=AS;
+
+/* ---- movements ---- */
+MG.squat={label:'Squat',moves:[
+  {id:'ohs',label:'Overhead Squat (screen)',focus:'Front + side view. Knees over toes, heels down, trunk parallel to shins, arms stay overhead, no shift.'},
+  {id:'bwsq',label:'Bodyweight Squat',focus:'Depth, knee tracking, trunk-tibia angle, heel contact.'},
+  {id:'goblet',label:'Goblet Squat',focus:'Upright trunk, depth, knees track over 2nd-3rd toe.'},
+  {id:'frontsq',label:'Front Squat',focus:'Elbows high, trunk angle, depth, bracing.'},
+  {id:'slsq',label:'Single-Leg Squat / Step-Down',focus:'Frontal plane knee angle (FPPA), pelvis level, trunk lean.'}
+]};
+const sm=MG.sprint.moves;
+if(!sm.some(m=>m.id==='transition'))sm.splice(2,0,{id:'transition',label:'Drive → Upright Transition',focus:'Gradual rise of trunk and shins over the first 10-20 yd.'});
+if(!sm.some(m=>m.id==='decel'))sm.push({id:'decel',label:'Deceleration / Brake',focus:'Low center of mass, trunk over hips, short braking steps, no straight-knee stop.'});
+
+/* ---- fault library: id → label, family, correctives (Setup / Purpose) ---- */
+const P='Movement Prep', SP='Speed / COD';
+AS.FAULTS={
+  // squat
+  valgus:{fam:'squat',label:'Knees cave in (valgus)',fix:[
+    {name:'Mini-Band Squat',block:P,sets:'2',reps:'10',cue:'Band just above the knees. Push the knees out over the 2nd-3rd toe on every rep, all the way down and up.',why:'Teaches the hips to hold the knee in line; knee valgus under load is a key ACL risk pattern.'},
+    {name:'Lateral Band Walk',block:P,sets:'2',reps:'10 ea',cue:'Band around the ankles, quarter-squat, toes forward, slow steps without the knees touching.',why:'Wakes up the glute med that controls knee position in squats and landings.'}]},
+  heel_rise:{fam:'squat',label:'Heels lift',fix:[
+    {name:'Knee-to-Wall Ankle Rocks',block:P,sets:'2',reps:'10 ea',cue:'Foot a hand-width from the wall, drive the knee to the wall over the 2nd toe, heel stays down.',why:'Heels rise when the ankle runs out of dorsiflexion; this buys the range the squat needs.'},
+    {name:'Heel-Elevated Goblet Squat',block:P,sets:'2',reps:'8',tempo:'3-1-1',cue:'Heels on a small plate, 3 s down, pause, stand. Chest tall.',why:'Lets her own the bottom position with a flat trunk while ankle range catches up.'}]},
+  fwd_lean:{fam:'squat',label:'Trunk leans ahead of the shins',fix:[
+    {name:'Tempo Goblet Squat to Box',block:P,sets:'2',reps:'6',tempo:'3-1-1',cue:'Hold the bell at the chest, sit to a box at parallel in 3 s, trunk stays parallel to the shins.',why:'Grooves an upright torso so the back is not doing the legs\' job.'},
+    {name:'Dead Bug',block:P,sets:'2',reps:'6 ea',cue:'Low back flat on the floor, exhale fully, reach opposite arm and leg slowly.',why:'Bracing so the trunk can stay tall under load.'}]},
+  depth:{fam:'squat',label:'Does not reach parallel',fix:[
+    {name:'Goblet Squat Bottom Hold',block:P,sets:'2',reps:'20s',cue:'Sit to full depth holding a light bell, elbows push the knees out, breathe.',why:'Builds comfort and range at the bottom of the squat.'}]},
+  lumbar:{fam:'squat',label:'Low back rounds at the bottom',fix:[
+    {name:'Box Squat to Parallel',block:P,sets:'2',reps:'6',cue:'Box set just above where the back starts to round. Touch, stay braced, stand.',why:'Trains depth only as deep as she can keep a neutral spine.'},
+    {name:'Dead Bug',block:P,sets:'2',reps:'6 ea',cue:'Low back flat on the floor, exhale fully, reach opposite arm and leg slowly.',why:'Bracing control for the bottom position.'}]},
+  feet_out:{fam:'squat',label:'Feet turn out',fix:[
+    {name:'Knee-to-Wall Ankle Rocks',block:P,sets:'2',reps:'10 ea',cue:'Foot a hand-width from the wall, drive the knee to the wall over the 2nd toe, heel stays down.',why:'Feet turning out is often an ankle-range compensation.'}]},
+  arms_fall:{fam:'squat',label:'Arms fall forward (overhead)',fix:[
+    {name:'Wall Slides',block:P,sets:'2',reps:'10',cue:'Back, head and forearms on the wall, slide up without the low back arching.',why:'Shoulder flexion and upper-back control for overhead positions.'},
+    {name:'Open Books',block:P,sets:'2',reps:'8 ea',cue:'Side-lying, knees stacked, rotate the top arm open and follow it with the eyes.',why:'Thoracic rotation and extension so the arms can stay overhead.'}]},
+  shift:{fam:'squat',label:'Weight shifts to one side',fix:[
+    {name:'Split Squat Iso Hold',block:P,sets:'2',reps:'20s ea',cue:'Back knee an inch off the floor, weaker side first, even weight through the front foot.',why:'Builds single-leg strength on the side she avoids loading.'}]},
+  pelvic_drop:{fam:'squat',label:'Pelvis drops (single-leg)',fix:[
+    {name:'Side Plank',block:P,sets:'2',reps:'20s ea',cue:'Straight line ear to ankle, top hip lifted.',why:'Lateral hip and trunk control to keep the pelvis level on one leg.'}]},
+  // sprint
+  accel_upright:{fam:'sprint',label:'Pops up too early in acceleration',fix:[
+    {name:'Wall Drill (March → Switches)',block:SP,sets:'3',reps:'5 ea',cue:'Hands on the wall, body at 45°, drive the knee up and the foot down under the hip.',why:'Teaches the forward body angle and push that the first steps need.'},
+    {name:'Heavy Resisted Sprint 10 yd',block:SP,sets:'3',reps:'1',cue:'Heavy sled or OHM heavy level, stay low for the full 10 yd, then 1 free sprint.',why:'Resistance forces the low, pushing posture of good acceleration.'}]},
+  shin_vertical:{fam:'sprint',label:'Shin too vertical at touchdown (acceleration)',fix:[
+    {name:'Falling Starts',block:SP,sets:'3',reps:'1',cue:'Tall, lean forward from the ankles until you have to step, then sprint 10 yd.',why:'Builds forward shin angles and pushing behind the hips in early steps.'}]},
+  overstride:{fam:'sprint',label:'Foot lands in front of the hips',fix:[
+    {name:'A-Skip',block:SP,sets:'2',reps:'20 yd',cue:'Tall, knee up, strike the ground under the hips, quiet rhythm.',why:'Grooves front-side mechanics and landing under the center of mass.'},
+    {name:'Wicket Runs',block:SP,sets:'3',reps:'1',cue:'Mini hurdles about 5-6 ft apart, run tall, step over and down.',why:'Organizes stride length and places foot contact under the hips at speed.'}]},
+  low_knee:{fam:'sprint',label:'Low front-side (knee lift)',fix:[
+    {name:'A-March → A-Skip',block:SP,sets:'2',reps:'20 yd',cue:'Knee to hip height, toe up, punch the foot down.',why:'Front-side mechanics for max velocity.'}]},
+  soft_ankle:{fam:'sprint',label:'Soft ankle / heel contact',fix:[
+    {name:'Pogo Hops',block:SP,sets:'2',reps:'15',cue:'Ball of the foot, ankle locked, bounce off the ground fast.',why:'Ankle stiffness is the gateway to short, fast ground contacts.'},
+    {name:'Ankling',block:SP,sets:'2',reps:'10 yd',cue:'Small quick steps, strike under the hips on the ball of the foot.',why:'Foot-strike position and stiffness at low speed before sprinting.'}]},
+  trunk_maxv:{fam:'sprint',label:'Trunk bent forward or leaning back at speed',fix:[
+    {name:'Fly 10 (Tall)',block:SP,sets:'3',reps:'1',cue:'20 yd build, 10 yd fly, head and hips tall.',why:'Max-velocity posture practiced at max velocity.'}]},
+  arms:{fam:'sprint',label:'Arms cross the body / weak arm drive',fix:[
+    {name:'Seated Arm Swings',block:SP,sets:'2',reps:'10s',cue:'Sit tall, elbows at 90°, hands cheek to hip, straight front-back.',why:'Arm action balances the legs and keeps the trunk from rotating.'}]},
+  decel_straight:{fam:'sprint',label:'Brakes with a straight knee / trunk back',fix:[
+    {name:'Decel to Stick',block:SP,sets:'3',reps:'3',cue:'Sprint 5 yd, chop 3 short steps, stop low and hold 2 s.',why:'Low, multi-step braking spreads the load and protects the knee.'}]}
+};
+AS.FAM_FAULTS={squat:['valgus','heel_rise','fwd_lean','depth','lumbar','feet_out','arms_fall','shift','pelvic_drop'],
+  sprint:['accel_upright','shin_vertical','overstride','low_knee','soft_ankle','trunk_maxv','arms','decel_straight']};
+
+/* ---- angle keys (what you measure) ---- */
+AS.KEYS={
+  squat:[['trunk','Trunk lean from vertical (°)'],['tibia','Shin lean from vertical (°)'],['fppaL','Knee FPPA left (°)'],['fppaR','Knee FPPA right (°)'],
+    ['depth','Depth','sel',['','above parallel','parallel','below parallel']],['heel','Heels','sel',['','down','lift']],['arms','Arms (overhead)','sel',['','stay up','fall forward']]],
+  sprint:[['trunk','Trunk lean from vertical (°)'],['shin','Shin lean at touchdown (°)'],['strike','Foot strike','sel',['','under hips','in front of hips']],['ankle','Ankle','sel',['','stiff','soft / heel']]]
+};
+AS.famOf=moveId=>{for(const k of Object.keys(MG))if((MG[k].moves||[]).some(m=>m.id===moveId))return k;return null;};
+AS.num=v=>{const n=parseFloat(v);return isNaN(n)?null:n;};
+
+/* local scoring: keys → angles table + faults (no AI needed) */
+AS.score=function(moveId,keys){
+  const fam=AS.famOf(moveId), k=keys||{}, angles=[], faults=[];
+  const add=(id,sev,ev)=>{if(!faults.some(f=>f.id===id))faults.push({id,severity:sev,evidence:ev,src:'keys'});};
+  const row=(joint,est,ideal,status)=>angles.push({joint,estimated:est,ideal,status,src:'keys'});
+  if(fam==='squat'){
+    const tr=AS.num(k.trunk), ti=AS.num(k.tibia), L=AS.num(k.fppaL), R=AS.num(k.fppaR);
+    if(tr!=null&&ti!=null){const d=tr-ti;const s=d>25?'fail':d>15?'warn':'ok';row('Trunk vs shin',tr+'° vs '+ti+'° ('+(d>0?'+':'')+d+'°)','Trunk roughly parallel to the shin (within 15°)',s);if(s!=='ok')add('fwd_lean',s,'Trunk '+d+'° more inclined than the shin');}
+    [['Left',L],['Right',R]].forEach(([side,v])=>{if(v==null)return;const s=v>15?'fail':v>10?'warn':'ok';row('Knee FPPA '+side,v+'°','10° or less',s);if(s!=='ok')add('valgus',s,side+' knee FPPA '+v+'°');});
+    if(L!=null&&R!=null&&Math.abs(L-R)>5){row('FPPA left-right gap',Math.abs(L-R)+'°','5° or less','warn');add('shift','warn','Knees differ by '+Math.abs(L-R)+'° (L '+L+'°, R '+R+'°)');}
+    if(k.depth){const s=k.depth==='above parallel'?'warn':'ok';row('Depth',k.depth,'Thighs at or below parallel',s);if(s!=='ok')add('depth','warn','Stops above parallel');}
+    if(k.heel){const s=k.heel==='lift'?'fail':'ok';row('Heels',k.heel,'Flat for the whole rep',s);if(s!=='ok')add('heel_rise','fail','Heels lift');}
+    if(k.arms&&moveId==='ohs'){const s=k.arms==='fall forward'?'warn':'ok';row('Arms overhead',k.arms,'In line with the trunk',s);if(s!=='ok')add('arms_fall','warn','Arms fall forward');}
+  }else if(fam==='sprint'){
+    const tr=AS.num(k.trunk), sh=AS.num(k.shin);
+    const early=moveId==='accel'||moveId==='transition';
+    if(tr!=null){
+      if(early){const s=tr<15?'fail':tr<25?'warn':'ok';row('Trunk lean (first steps)',tr+'°','About 40-45° off vertical, rising gradually',s);if(s!=='ok')add('accel_upright',s,'Trunk only '+tr+'° off vertical in the first steps');}
+      else if(moveId==='maxvel'||moveId==='general'){const s=(tr>12||tr<-5)?'warn':'ok';row('Trunk at max velocity',tr+'°','Tall: 0-12° forward',s);if(s!=='ok')add('trunk_maxv','warn','Trunk '+tr+'° at speed');}
+      else if(moveId==='decel'){const s=tr<0?'warn':'ok';row('Trunk while braking',tr+'°','Over or slightly ahead of the hips',s);if(s!=='ok')add('decel_straight','warn','Trunk behind the hips while braking');}
+    }
+    if(sh!=null&&early){const s=sh<25?'warn':'ok';row('Shin lean at touchdown',sh+'°','About 45° in the first steps',s);if(s!=='ok')add('shin_vertical','warn','Shin '+sh+'° off vertical at touchdown');}
+    if(k.strike){const s=k.strike==='in front of hips'?'warn':'ok';row('Foot strike',k.strike,'Under the hips',s);if(s!=='ok')add('overstride','warn','Foot lands in front of the hips');}
+    if(k.ankle){const s=k.ankle==='soft / heel'?'warn':'ok';row('Ankle at contact',k.ankle,'Stiff, ball of the foot',s);if(s!=='ok')add('soft_ankle','warn','Soft ankle / heel contact');}
+  }
+  // score: start at 100, warn -12, fail -25
+  const pts=Math.max(0,100-faults.reduce((t,f)=>t+(f.severity==='fail'?25:12),0));
+  const grade=pts>=90?'A':pts>=78?'B':pts>=65?'C':pts>=50?'D':'F';
+  return {fam,angles,faults,score:pts,grade};
+};
+
+/* ---- UI: squat chip, extra sprint phases, angle-key fields, frame steps ---- */
+AS.mountUI=function(){
+  const opts=document.getElementById('film-opts'); if(!opts)return;
+  const cats=opts.querySelector('.move-cat')&&opts.querySelector('.move-cat').parentElement;
+  if(cats&&!cats.querySelector('[data-cat="squat"]')){
+    const s=document.createElement('span');s.className='move-cat';s.dataset.cat='squat';s.textContent='Squat';
+    s.onclick=function(){setMoveCat('squat',this);AS.renderKeys();};
+    const sprintChip=cats.querySelector('[data-cat="sprint"]');cats.insertBefore(s,sprintChip);
+    cats.querySelectorAll('.move-cat').forEach(c=>{if(c!==s){const o=c.onclick;c.addEventListener('click',()=>setTimeout(AS.renderKeys,0));}});
+  }
+  const moveSel=document.getElementById('film-move');
+  if(moveSel&&!moveSel._as){moveSel._as=true;moveSel.addEventListener('change',AS.renderKeys);}
+  if(!document.getElementById('as-keys')){
+    const box=document.createElement('div');box.id='as-keys';box.className='fg';
+    const run=document.getElementById('film-run-btn');run.parentElement.insertBefore(box,run);
+    const b=document.createElement('button');b.className='btn';b.id='as-score-btn';b.style.cssText='width:100%;margin-top:8px;';b.textContent='Score from angle keys (no AI)';
+    b.onclick=()=>AS.run({keysOnly:true});
+    run.after(b);
+  }
+  // open the options without frames (keys-only assessments)
+  const uzCard=document.getElementById('film-uz')&&document.getElementById('film-uz').parentElement;
+  if(uzCard&&!document.getElementById('as-nokeys')){
+    const b=document.createElement('button');b.className='btn btn-sm';b.id='as-nokeys';b.style.cssText='width:100%;margin-top:8px;';b.textContent='Enter angle keys without video';
+    b.onclick=()=>{opts.style.display='block';AS.renderKeys();try{opts.scrollIntoView({block:'start',behavior:'smooth'});}catch(e){}};
+    uzCard.appendChild(b);
+  }
+  // frame stepping on the video (30 fps)
+  const wrap=document.getElementById('film-video-wrap');
+  if(wrap&&!document.getElementById('as-step')){
+    const flex=wrap.querySelector('.spread .flex');
+    if(flex){const bk=document.createElement('button');bk.className='btn btn-sm';bk.id='as-step';bk.textContent='◀ Frame';bk.onclick=()=>AS.step(-1);
+      const fw=document.createElement('button');fw.className='btn btn-sm';fw.textContent='Frame ▶';fw.onclick=()=>AS.step(1);
+      flex.insertBefore(fw,flex.firstChild);flex.insertBefore(bk,flex.firstChild);}
+  }
+  AS.renderKeys();
+};
+AS.step=function(dir){const v=document.getElementById('film-video');if(!v||!v.duration)return;v.pause();v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+dir/30));};
+AS.renderKeys=function(){
+  const box=document.getElementById('as-keys'); if(!box)return;
+  const moveId=(document.getElementById('film-move')||{}).value;
+  const fam=AS.famOf(moveId);
+  const list=AS.KEYS[fam];
+  if(!list){box.innerHTML='';box.hidden=true;return;}
+  box.hidden=false;
+  const prev={};box.querySelectorAll('[data-k]').forEach(el=>{prev[el.dataset.k]=el.value;});
+  box.innerHTML='<label>Angle keys (optional, what you measured)</label><div class="as-kgrid">'
+    +list.map(([k,l,type,opts])=>'<div class="as-k"><span>'+esc(l)+'</span>'
+      +(type==='sel'?'<select data-k="'+k+'">'+opts.map(o=>'<option value="'+esc(o)+'">'+esc(o||'—')+'</option>').join('')+'</select>'
+        :'<input data-k="'+k+'" inputmode="decimal" placeholder="°">')+'</div>').join('')+'</div>';
+  box.querySelectorAll('[data-k]').forEach(el=>{if(prev[el.dataset.k]!=null)el.value=prev[el.dataset.k];});
+};
+AS.readKeys=function(){const out={};document.querySelectorAll('#as-keys [data-k]').forEach(el=>{if(el.value!=='')out[el.dataset.k]=el.value;});return out;};
+
+/* ---- run: keys-only or AI + keys ---- */
+AS.aiPrompt=function(guide,fam,view,notes,ath,keys){
+  const allowed=(AS.FAM_FAULTS[fam]||[]).map(id=>id+' = '+AS.FAULTS[id].label).join('; ');
+  let ctx='MOVEMENT: '+guide.label+'\nCAMERA: '+view+'\nFOCUS: '+guide.focus+'\n';
+  if(notes)ctx+='CONTEXT: '+notes+'\n';
+  if(ath){const m=typeof getMetrics==='function'?getMetrics(ath):{};ctx+='ATHLETE: '+an(ath)+', '+(ath.sport||'')+', age '+(ath.age||'?')+'. CMJ:'+m.cmj+' RSI:'+m.rsi+' Asym:'+m.asy+'%\n';}
+  if(Object.keys(keys).length)ctx+='COACH-MEASURED ANGLE KEYS (ground truth, do not contradict): '+JSON.stringify(keys)+'\n';
+  ctx+='\nYou are an elite movement coach (Stu McMillan / ALTIS sprint mechanics; NASM-style squat screening). Analyze these frames.'
+    +(fam?' Only use these fault ids: '+allowed+'.':'')
+    +'\nReturn ONLY valid JSON:\n{"overallGrade":"A","overallScore":85,"summary":"2 sentences","categories":[{"name":"","grade":"A","score":85,"finding":"","ideal":""}],'
+    +'"angles":[{"joint":"","estimated":"","ideal":"","status":"ok|warn|fail"}],"faults":[{"id":"","severity":"warn|fail","evidence":"what you saw"}],'
+    +'"topCues":[{"number":1,"title":"3-word cue","verbal":"verbal cue","drill":"drill","why":"why"}],"sessionNote":"1-line note"}';
+  return ctx;
+};
+AS.merge=function(ai,local){
+  const r=ai||{};
+  r.angles=(local.angles||[]).concat((r.angles||[]).filter(a=>!local.angles.some(l=>norm(l.joint)===norm(a.joint))));
+  const fam=local.fam;
+  const aiF=(r.faults||[]).filter(f=>AS.FAULTS[f.id]&&(!fam||AS.FAULTS[f.id].fam===fam)&&!local.faults.some(l=>l.id===f.id)).map(f=>Object.assign({src:'ai'},f));
+  r.faults=local.faults.concat(aiF);
+  if(r.overallScore==null){r.overallScore=local.score;r.overallGrade=local.grade;}
+  else if(local.faults.length){r.overallScore=Math.min(r.overallScore,local.score);const s=r.overallScore;r.overallGrade=s>=90?'A':s>=78?'B':s>=65?'C':s>=50?'D':'F';}
+  r.categories=r.categories||[];r.topCues=r.topCues||[];
+  return r;
+};
+AS.run=async function(o){
+  o=o||{};
+  const moveId=(document.getElementById('film-move')||{}).value;
+  const fam=AS.famOf(moveId);
+  const guide=MG[fam]&&MG[fam].moves.find(m=>m.id===moveId);
+  if(!guide){toast('Select a movement');return null;}
+  const keys=o.keys||AS.readKeys();
+  const view=(document.getElementById('film-view')||{}).value||'auto';
+  const notes=((document.getElementById('film-notes')||{}).value||'').trim();
+  const athId=o.athId!=null?o.athId:(document.getElementById('film-ath')||{}).value;
+  const ath=S.athletes.find(a=>a.id===athId);
+  const local=AS.score(moveId,keys);
+  const imgs=(typeof _filmImgs!=='undefined'?_filmImgs:[]).filter(i=>i&&i.dataUrl);
+  let result;
+  const useAI=!o.keysOnly&&imgs.length&&_apiKey;
+  if(!useAI){
+    if(!Object.keys(keys).length){toast(imgs.length?'Set your API key for the AI read, or enter angle keys':'Enter angle keys (or add frames)');return null;}
+    result={overallGrade:local.grade,overallScore:local.score,
+      summary:local.faults.length?local.faults.map(f=>AS.FAULTS[f.id].label).join(', ')+'.':'No faults on the measured keys.',
+      categories:[],topCues:[],angles:local.angles,faults:local.faults,sessionNote:'Assessment: '+guide.label};
+  }else{
+    const btn=document.getElementById('film-run-btn');if(btn){btn.textContent='Analyzing...';btn.disabled=true;}
+    try{
+      const imgBlocks=imgs.map(i=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:i.dataUrl.split(',')[1]}})).filter(i=>i.source.data&&i.source.data.length>100);
+      const res=await apiFetch({max_tokens:2500,messages:[{role:'user',content:[...imgBlocks,{type:'text',text:AS.aiPrompt(guide,fam,view,notes,ath,keys)}]}]});
+      const d=await res.json();
+      if(d.error)throw new Error(d.error.message||'API error');
+      const raw=(d.content&&d.content.find(b=>b.type==='text')&&d.content.find(b=>b.type==='text').text)||'';
+      const ai=(typeof parseJSONLoose==='function'&&(parseJSONLoose(raw)||parseJSONLoose(repairJSON(raw))))||{summary:raw.slice(0,200)};
+      result=AS.merge(ai,local);
+    }catch(e){toast('AI read failed: '+String(e.message||e).slice(0,60)+'. Using your keys.');
+      result=AS.merge({},local);result.summary=result.summary||'Scored from angle keys.';}
+    finally{if(btn){btn.textContent='⚡ Analyze';btn.disabled=false;}}
+  }
+  const analysis={id:uid(),ts:new Date().toLocaleString(),date:today(),athId:athId||null,athName:ath?an(ath):null,
+    movementLabel:guide.label,moveId,family:fam,keys,result,assess:true};
+  if(!S.filmAnalyses)S.filmAnalyses=[];
+  S.filmAnalyses.unshift(analysis);
+  if(S.filmAnalyses.length>40)S.filmAnalyses=S.filmAnalyses.slice(0,40);
+  save();
+  try{renderFilmHistory();}catch(e){}
+  try{showFilmOutput(analysis);}catch(e){}
+  return analysis;
+};
+window.runFilmAnalysis=function(){return AS.run({});};
+
+/* ---- output additions: angles, faults → fixes, retest, program buttons ---- */
+AS.prevOf=function(a){
+  return (S.filmAnalyses||[]).filter(x=>x!==a&&x.athId&&x.athId===a.athId&&x.moveId===a.moveId&&(x.date||'')<=(a.date||'')&&S.filmAnalyses.indexOf(x)>S.filmAnalyses.indexOf(a))[0]||null;
+};
+AS.outputHtml=function(a){
+  const r=a.result||{}; const q=x=>"'"+String(x).replace(/'/g,"\\'")+"'";
+  const st={ok:'On target',warn:'Watch',fail:'Fix'};
+  let h='';
+  if((r.angles||[]).length){
+    h+='<div class="card as-card"><div class="card-title">Angle keys</div><table class="as-tbl"><thead><tr><th>Joint</th><th>Measured</th><th>Ideal</th><th>Status</th></tr></thead><tbody>'
+      +r.angles.map(x=>'<tr><td>'+esc(x.joint)+'</td><td>'+esc(x.estimated)+(x.src==='keys'?'':' <span class="as-est">(AI est.)</span>')+'</td><td>'+esc(x.ideal||'')+'</td><td><span class="as-st as-'+esc(x.status||'ok')+'">'+(st[x.status]||esc(x.status||''))+'</span></td></tr>').join('')
+      +'</tbody></table></div>';
+  }
+  const faults=(r.faults||[]).filter(f=>AS.FAULTS[f.id]);
+  if(faults.length){
+    h+='<div class="card as-card"><div class="card-title">Faults → fixes</div>'
+      +faults.map(f=>{const F=AS.FAULTS[f.id];return '<div class="as-fault"><div class="as-fh"><span class="as-st as-'+esc(f.severity||'warn')+'">'+(f.severity==='fail'?'Fix':'Watch')+'</span><b>'+esc(F.label)+'</b></div>'
+        +(f.evidence?'<div class="as-ev">'+esc(f.evidence)+'</div>':'')
+        +F.fix.map(x=>'<div class="as-fix"><b>'+esc(x.name)+'</b> · '+esc(x.sets+' × '+x.reps)+'<div><b>Setup</b> '+esc(x.cue)+'</div><div><b>Purpose</b> '+esc(x.why)+'</div></div>').join('')+'</div>';}).join('')
+      +'</div>';
+  }
+  const prev=AS.prevOf(a);
+  if(prev){
+    const ps=(prev.result||{}).overallScore||0, cs=r.overallScore||0, d=cs-ps;
+    const pf=new Set(((prev.result||{}).faults||[]).map(f=>f.id)), cf=new Set(faults.map(f=>f.id));
+    const fixed=[...pf].filter(x=>!cf.has(x)&&AS.FAULTS[x]).map(x=>AS.FAULTS[x].label), still=[...pf].filter(x=>cf.has(x)&&AS.FAULTS[x]).map(x=>AS.FAULTS[x].label), fresh=[...cf].filter(x=>!pf.has(x)).map(x=>AS.FAULTS[x].label);
+    h+='<div class="card as-card"><div class="card-title">Retest vs '+esc(prev.date||prev.ts||'last time')+'</div>'
+      +'<div class="as-rt"><span>'+ps+' → '+cs+'</span><b class="'+(d>=0?'as-up':'as-dn')+'">'+(d>=0?'+':'')+d+' points</b></div>'
+      +(fixed.length?'<div class="as-ev">Fixed: '+esc(fixed.join(', '))+'</div>':'')
+      +(still.length?'<div class="as-ev">Still there: '+esc(still.join(', '))+'</div>':'')
+      +(fresh.length?'<div class="as-ev">New: '+esc(fresh.join(', '))+'</div>':'')+'</div>';
+  }
+  if(a.athId&&faults.length){
+    const p=S.programs[a.athId];
+    const inProg=p&&(p.weeks_data||[]).some(w=>(w.days||[]).some(d=>(d.sessions||[]).some(s=>(s.exercises||[]).some(e=>e.assessId===a.id))));
+    h+='<div class="card as-card"><div class="card-title">Deep program</div>'
+      +(p?'<div class="as-ev">'+(inProg?'Fixes are in '+esc(a.athName||'')+'\'s program.':'Adds these fixes to '+esc(a.athName||'')+'\'s next unlogged weeks (up to 3, max 2 per session per area). Logged weeks are left alone.')+'</div>'
+        +'<div class="as-btns">'+(inProg?'<button class="btn btn-sm" onclick="RX.assess.removeFromProgram('+q(a.id)+');showFilmOutput(RX.assess.byId('+q(a.id)+'))">Remove fixes</button>'
+            :'<button class="btn btn-primary btn-sm" onclick="RX.assess.applyToProgram('+q(a.id)+');showFilmOutput(RX.assess.byId('+q(a.id)+'))">Add fixes to program</button>')
+          +'<button class="btn btn-sm" onclick="go(\'programs\');showProgDetail('+q(a.athId)+')">Open program</button></div>'
+       :'<div class="as-ev">'+esc(a.athName||'This athlete')+' has no program yet. Flag this finding below, then Generate on the Programs page and the build uses it.</div>')
+      +'</div>';
+  }
+  return h;
+};
+AS.byId=id=>(S.filmAnalyses||[]).find(x=>x.id===id)||null;
+const _sfo=window.showFilmOutput;
+window.showFilmOutput=function(a){
+  let r;try{r=_sfo.apply(this,arguments);}catch(e){console.warn('[RX] film output',e);}
+  try{
+    if(a&&(a.assess||(a.result&&(a.result.faults||a.result.angles)))){
+      const out=document.getElementById('film-output');
+      const wrap=document.createElement('div');wrap.className='as-out';wrap.innerHTML=AS.outputHtml(a);
+      const firstCard=out.querySelector('.card');
+      if(firstCard)firstCard.after(wrap);else out.appendChild(wrap);
+    }
+  }catch(e){console.warn('[RX] assess output',e);}
+  return r;
+};
+
+/* ---- program: insert / remove fixes ---- */
+AS.weekLogged=function(p,wk){
+  const k='wk'+wk;
+  return !!((p.actuals&&p.actuals[k]&&Object.keys(p.actuals[k]).length)||(p.done&&p.done[k]&&Object.keys(p.done[k]).length)||(p.setLog&&p.setLog[k]&&Object.keys(p.setLog[k]).length));
+};
+AS.applyToProgram=function(analysisId,nWeeks){
+  const a=AS.byId(analysisId); if(!a||!a.athId)return null;
+  const p=S.programs[a.athId]; if(!p)return null;
+  nWeeks=nWeeks||3;
+  const faults=((a.result||{}).faults||[]).filter(f=>AS.FAULTS[f.id]).sort((x,y)=>(y.severity==='fail')-(x.severity==='fail'));
+  const cur=(p.currentWeek||1);
+  const weeks=(p.weeks_data||[]).filter(w=>w.week>=cur&&w.phase!=='Retest'&&!AS.weekLogged(p,w.week)).slice(0,nWeeks);
+  const skipped=(p.weeks_data||[]).filter(w=>w.week>=cur&&AS.weekLogged(p,w.week)).map(w=>w.week);
+  let added=0;
+  weeks.forEach(w=>(w.days||[]).forEach(d=>{
+    const s=(d.sessions||[])[0]; if(!s)return;
+    if(!s.exercises)s.exercises=[];
+    const byFam={squat:[],sprint:[]};
+    faults.forEach(f=>{const F=AS.FAULTS[f.id];F.fix.forEach(x=>{if(!byFam[F.fam].some(y=>y.fix.name===x.name))byFam[F.fam].push({fix:x,f,F});});});
+    const have=n=>s.exercises.some(e=>norm(e.name)===norm(n));
+    const mk=({fix,F})=>({name:fix.name,block:fix.block,sets:fix.sets,reps:fix.reps,weight:'BW',tempo:fix.tempo||'',rpe:'',rest:'',
+      cue:fix.cue,why:fix.why+' (Fixes: '+F.label.toLowerCase()+', '+(a.movementLabel||'assessment')+' '+(a.date||'')+'.)',src:'assess',assessId:a.id,slot:'',pair:''});
+    // squat fixes: after the last Movement Prep item
+    const sq=byFam.squat.filter(x=>!have(x.fix.name)).slice(0,2).map(mk);
+    if(sq.length){let at=-1;s.exercises.forEach((e,i)=>{if(RX.blockOf(e)==='Movement Prep')at=i;});s.exercises.splice(at+1,0,...sq);added+=sq.length;}
+    // sprint drills: in front of the first Speed / COD item
+    const sp=byFam.sprint.filter(x=>!have(x.fix.name)).slice(0,2).map(mk);
+    if(sp.length){let at=s.exercises.findIndex(e=>RX.blockOf(e)==='Speed / COD'&&e.src!=='assess');
+      if(at<0){at=0;s.exercises.forEach((e,i)=>{if(RX.blockOf(e)==='Movement Prep')at=i+1;});}
+      s.exercises.splice(at,0,...sp);added+=sp.length;}
+  }));
+  a.inProgram={weeks:weeks.map(w=>w.week),at:today()};
+  a.priorityForProgram=true;
+  p.edited=true; save();
+  if(typeof toast==='function')toast(added?'Added '+added+' fix exercises to weeks '+weeks.map(w=>w.week).join(', ')+(skipped.length?' (weeks '+skipped.join(', ')+' already logged, left alone)':''):'Nothing to add: fixes already in those weeks, or no unlogged weeks');
+  return {added,weeks:weeks.map(w=>w.week),skipped};
+};
+AS.removeFromProgram=function(analysisId){
+  const a=AS.byId(analysisId); if(!a||!a.athId)return 0;
+  const p=S.programs[a.athId]; if(!p)return 0;
+  let n=0;
+  (p.weeks_data||[]).forEach(w=>{if(AS.weekLogged(p,w.week))return;(w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>{const before=(s.exercises||[]).length;s.exercises=(s.exercises||[]).filter(e=>e.assessId!==a.id);n+=before-s.exercises.length;}));});
+  delete a.inProgram; save();
+  if(typeof toast==='function')toast('Removed '+n+' fix exercises');
+  return n;
+};
+
+AS.CSS=`
+#as-keys .as-kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:6px;}
+#as-keys .as-k{display:flex;flex-direction:column;gap:4px;}
+#as-keys .as-k span{font:500 9px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text3);}
+#as-keys input,#as-keys select{font-size:13px !important;padding:7px 9px !important;}
+.as-card .as-tbl{width:100%;border-collapse:collapse;font:500 12px var(--mono);}
+.as-card .as-tbl th{text-align:left;font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:6px;border-bottom:1px solid var(--border);}
+.as-card .as-tbl td{padding:7px 6px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;}
+.as-card .as-est{color:var(--text3);font-size:10px;}
+.as-card .as-tbl td:nth-child(1),.as-card .as-tbl td:nth-child(3){font:400 11px/1.4 var(--disp);color:var(--text2);}
+.as-card .as-tbl td:nth-child(2){white-space:nowrap;}
+.as-st{display:inline-block;font:600 9px var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:5px;border:1px solid;}
+.as-st.as-ok{color:#58ca86;border-color:rgba(88,202,134,.45);}
+.as-st.as-warn{color:#e8c547;border-color:rgba(232,197,71,.45);}
+.as-st.as-fail{color:#ef736b;border-color:rgba(239,115,107,.5);}
+.as-fault{padding:10px 0;border-bottom:1px solid var(--border);}
+.as-fault:last-child{border-bottom:none;}
+.as-fh{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);}
+.as-ev{font-size:11px;color:var(--text2);margin:6px 0;line-height:1.5;}
+.as-fix{font-size:11px;color:var(--text2);margin:6px 0 0 12px;padding-left:10px;border-left:2px solid var(--border2);line-height:1.5;}
+.as-fix b{color:var(--text);}
+.as-rt{display:flex;align-items:baseline;gap:12px;font:500 14px var(--mono);color:var(--text);}
+.as-up{color:#58ca86;}.as-dn{color:#ef736b;}
+.as-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+`;
+AS.boot=function(){
+  if(!document.getElementById('as-css')){const s=document.createElement('style');s.id='as-css';s.textContent=AS.CSS;(document.head||document.documentElement).appendChild(s);}
+  try{AS.mountUI();}catch(e){console.warn('[RX] assess ui',e);}
+};
+if(typeof window.initFilm==='function'){
+  const _if=window.initFilm;
+  window.initFilm=function(){const r=_if.apply(this,arguments);try{AS.boot();}catch(e){}return r;};
+}
+const _fl=window.filmLoadFiles;
+if(typeof _fl==='function')window.filmLoadFiles=function(){const r=_fl.apply(this,arguments);setTimeout(()=>{try{AS.renderKeys();}catch(e){}},50);return r;};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',AS.boot);else AS.boot();
+})();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment','color:#7aa2c4');
 })();
 
 </script>
