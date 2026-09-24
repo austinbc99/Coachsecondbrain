@@ -5580,7 +5580,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'3.0'};
+const RX={ver:'3.4'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -9512,7 +9512,7 @@ GV.remove=function(gid,wk,dayName,key,ask){
   if(ask!==false&&!confirm('Remove "'+any.ex.name+'" from '+dayName+' for the whole group?'))return 0;
   // splice from the end so indices stay valid per athlete
   let n=0;
-  r.cells.filter(Boolean).forEach(c=>{const s=S.programs[c.athId].weeks_data[c.wi].days[c.di].sessions[c.si];s.exercises.splice(c.ei,1);S.programs[c.athId].edited=true;n++;});
+  r.cells.filter(Boolean).forEach(c=>{if(RX.dd)RX.dd.remove(c.athId,c.wi,c.di,c.si,c.ei);else{S.programs[c.athId].weeks_data[c.wi].days[c.di].sessions[c.si].exercises.splice(c.ei,1);}S.programs[c.athId].edited=true;n++;});
   save(); GV.render(); return n;
 };
 GV.addAll=function(gid,wk,dayName,name,block){
@@ -10708,7 +10708,1722 @@ RX.seedAustin=function(force){
 window.addEventListener('load',()=>setTimeout(()=>{try{RX.seedAustin();}catch(e){console.warn('[RX] Austin seed',e);}},RX.SEED_DELAY+1500));
 })();
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment, the Lab','color:#7aa2c4');
+/* ═══════════════ SECTION 26 — MOVE EXERCISES (DRAG OR TAP) + AUTOSAVE ════
+   Programs page: every exercise tile gets a grip handle.
+   - Drag the grip (mouse, finger or pen) to reorder inside a day or drop
+     it into another day of the same week.
+   - Tap the grip for a move menu: up, down, top, bottom, or another day,
+     with "same move in later weeks".
+   Group program (Athletes > group view): drag or tap a row's grip to
+   reorder the drill for every athlete in the group.
+   Every move saves at once (save()), and a bar offers Undo and
+   "Same move in later weeks".
+   Logged work follows the exercise: actuals / done / setLog are keyed
+   "Day-Session-index", so every move and delete re-keys them.
+   The exercise keeps its block, unless it is dropped inside another
+   block's run (then it takes that block, so the headers stay clean). */
+(function(){
+const DD={};
+RX.dd=DD;
+DD.STORES=['actuals','done','setLog'];
+DD.key=(d,s,ei)=>d.day+'-'+s.type+'-'+ei;
+DD.base=n=>RX.gv&&RX.gv.base?RX.gv.base(n):norm(String(n||'').replace(/\([^)]*\)/g,' '));
+
+/* run mutate() on some sessions of one week, then move every logged entry
+   of those sessions to its exercise's new index */
+DD.rekey=function(p,wi,sess,mutate){
+  const w=p.weeks_data[wi], wk='wk'+w.week;
+  const uniq=[];sess.forEach(x=>{if(!uniq.some(u=>u.d===x.d&&u.s===x.s))uniq.push(x);});
+  const oldKey=new Map(), oldKeys=[];
+  uniq.forEach(({d,s})=>(s.exercises||[]).forEach((ex,ei)=>{const k=DD.key(d,s,ei);oldKey.set(ex,k);oldKeys.push(k);}));
+  const out=mutate();
+  const map={};
+  uniq.forEach(({d,s})=>(s.exercises||[]).forEach((ex,ei)=>{const k=oldKey.get(ex);if(k!=null)map[k]=DD.key(d,s,ei);}));
+  DD.STORES.forEach(st=>{
+    const o=p[st]&&p[st][wk]; if(!o)return;
+    const keep={};
+    oldKeys.forEach(k=>{if(k in o){if(map[k])keep[map[k]]=o[k];delete o[k];}});
+    Object.assign(o,keep);
+  });
+  return out;
+};
+
+/* move one exercise. to.ei = insertion point in the destination list as it
+   is BEFORE the move (0..length). Returns a description for undo/later weeks */
+DD.move=function(athId,wi,from,to){
+  const p=S.programs[athId]; if(!p)return null;
+  const w=p.weeks_data[wi]; if(!w)return null;
+  const d1=w.days[from.di], s1=d1&&d1.sessions[from.si];
+  const d2=w.days[to.di], s2=d2&&d2.sessions[to.si];
+  if(!s1||!s2||!s1.exercises||!s1.exercises[from.ei])return null;
+  if(!s2.exercises)s2.exercises=[];
+  const same=s1===s2;
+  let at=Math.max(0,Math.min(to.ei,s2.exercises.length));
+  if(same&&at>from.ei)at--;
+  if(same&&at===from.ei)return null;
+  const ex=s1.exercises[from.ei];
+  DD.rekey(p,wi,[{d:d1,s:s1},{d:d2,s:s2}],()=>{
+    s1.exercises.splice(from.ei,1);
+    s2.exercises.splice(at,0,ex);
+  });
+  // block: dropped inside another block's run -> take that block
+  const up=s2.exercises[at-1], dn=s2.exercises[at+1];
+  if(up&&dn&&up.block&&up.block===dn.block&&ex.block!==up.block)ex.block=up.block;
+  p.edited=true;
+  return {athId,wi,name:ex.name,
+    fromDay:d1.day,fromType:s1.type,toDay:d2.day,toType:s2.type,toDi:to.di,toSi:to.si,toEi:at,
+    after:up?up.name:null,before:dn?dn.name:null,crossDay:!same};
+};
+
+/* delete one exercise, keeping everyone else's logs on the right exercise */
+DD.remove=function(athId,wi,di,si,ei){
+  const p=S.programs[athId]; if(!p)return false;
+  const w=p.weeks_data[wi], d=w&&w.days[di], s=d&&d.sessions[si];
+  if(!s||!s.exercises||!s.exercises[ei])return false;
+  DD.rekey(p,wi,[{d,s}],()=>s.exercises.splice(ei,1));
+  p.edited=true;
+  return true;
+};
+
+/* find a session in another week by day + session type (index fallback) */
+DD.findSess=function(w,day,type,di,si){
+  const d=(w.days||[]).find(x=>x.day===day)||null; if(!d)return null;
+  let s=(d.sessions||[]).find(x=>x.type===type);
+  if(!s&&(d.sessions||[]).length===1)s=d.sessions[0];
+  if(!s)return null;
+  return {d,s,di:w.days.indexOf(d),si:d.sessions.indexOf(s)};
+};
+DD.findEx=(s,name)=>(s.exercises||[]).findIndex(e=>DD.base(e.name)===DD.base(name));
+
+/* repeat a move in every later week where the same drill exists */
+DD.later=function(mv){
+  const p=S.programs[mv.athId]; if(!p)return {done:[],miss:[]};
+  const done=[],miss=[];
+  for(let k=mv.wi+1;k<p.weeks_data.length;k++){
+    const w=p.weeks_data[k];
+    const A=DD.findSess(w,mv.fromDay,mv.fromType), B=DD.findSess(w,mv.toDay,mv.toType);
+    const ei=A?DD.findEx(A.s,mv.name):-1;
+    if(!A||!B||ei<0){miss.push(w.week);continue;}
+    const cur=A.s.exercises[ei];
+    let to=-1;
+    if(mv.after!=null){const j=(B.s.exercises||[]).findIndex(e=>e!==cur&&DD.base(e.name)===DD.base(mv.after));if(j>=0)to=j+1;}
+    if(to<0&&mv.before!=null){const j=(B.s.exercises||[]).findIndex(e=>e!==cur&&DD.base(e.name)===DD.base(mv.before));if(j>=0)to=j;}
+    if(to<0)to=mv.after==null?0:(B.s.exercises||[]).length;
+    const r=DD.move(mv.athId,k,{di:A.di,si:A.si,ei},{di:B.di,si:B.si,ei:to});
+    if(r||(A.s===B.s&&(to===ei||to===ei+1)))done.push(w.week);else miss.push(w.week);
+  }
+  return {done,miss};
+};
+
+/* group: move the drill on row `key` so it sits at row position `toIdx`
+   (0..rows, before the move), for every athlete who has it */
+DD.groupMove=function(gid,wk,dayName,key,toIdx){
+  const g=RX.grp.get(gid); if(!g)return 0;
+  const {mem,rows}=RX.gv.rows(g,wk,dayName);
+  const fi=rows.findIndex(r=>r.key===key); if(fi<0)return 0;
+  let at=toIdx; if(at>fi)at--;
+  if(at===fi)return 0;
+  const order=rows.slice(); const [row]=order.splice(fi,1); order.splice(at,0,row);
+  let n=0;
+  mem.forEach((a,i)=>{
+    const c=row.cells[i]; if(!c)return;
+    let dest=null;
+    for(let j=at-1;j>=0;j--){const o=order[j].cells[i];if(o){dest={di:o.di,si:o.si,ei:o.ei+1};break;}}
+    if(!dest)for(let j=at+1;j<order.length;j++){const o=order[j].cells[i];if(o){dest={di:o.di,si:o.si,ei:o.ei};break;}}
+    if(!dest)return;
+    if(DD.move(a.id,c.wi,{di:c.di,si:c.si,ei:c.ei},dest))n++;
+  });
+  return n;
+};
+
+/* ---- undo + status bar ---- */
+DD.snap=ids=>{const o={};ids.forEach(id=>{if(S.programs[id])o[id]=JSON.stringify(S.programs[id]);});return o;};
+DD.restore=function(snap){Object.entries(snap).forEach(([id,j])=>{S.programs[id]=JSON.parse(j);});save();};
+DD.bar=function(html,actions){
+  let b=document.getElementById('dd-bar');
+  if(!b){b=document.createElement('div');b.id='dd-bar';b.setAttribute('role','status');document.body.appendChild(b);}
+  b.innerHTML='<span class="dd-msg">'+html+'</span>'+(actions||[]).map((a,i)=>'<button type="button" data-i="'+i+'">'+esc(a.label)+'</button>').join('')
+    +'<button type="button" class="dd-x" aria-label="Dismiss">×</button>';
+  b.querySelectorAll('button[data-i]').forEach(btn=>btn.onclick=()=>{const a=actions[+btn.dataset.i];DD.hideBar();a.run();});
+  b.querySelector('.dd-x').onclick=DD.hideBar;
+  b.classList.add('on');
+  clearTimeout(DD._bt);DD._bt=setTimeout(DD.hideBar,9000);
+};
+DD.hideBar=()=>{const b=document.getElementById('dd-bar');if(b)b.classList.remove('on');};
+
+/* ---- program page ---- */
+DD.view={athId:null,wi:0};
+DD.rerender=function(athId,wi,flashName){
+  const sc=DD.scroller(document.getElementById('prog-detail'));
+  const top=sc?sc.scrollTop:0;
+  showProgDetail(athId,wi);
+  if(sc)sc.scrollTop=top;
+  if(flashName!=null){
+    const tr=DD.rows(document.getElementById('prog-detail')).find(r=>r.m.ei===flashName.ei&&r.m.di===flashName.di&&r.m.si===flashName.si);
+    if(tr){tr.el.classList.add('dd-flash');setTimeout(()=>tr.el.classList.remove('dd-flash'),1400);}
+  }
+};
+DD.afterMove=function(mv,snap){
+  save();
+  DD.rerender(mv.athId,mv.wi,{di:mv.toDi,si:mv.toSi,ei:mv.toEi});
+  const p=S.programs[mv.athId], wkN=p.weeks_data[mv.wi].week, last=p.weeks_data[p.weeks_data.length-1].week;
+  const acts=[{label:'Undo',run:()=>{DD.restore(snap);DD.rerender(mv.athId,mv.wi);DD.bar('Move undone. Saved.');}}];
+  if(mv.wi<p.weeks_data.length-1)acts.push({label:'Same in weeks '+(wkN+1)+'-'+last,run:()=>{
+    const snap2=DD.snap([mv.athId]);
+    const r=DD.later(mv); save(); DD.rerender(mv.athId,mv.wi);
+    DD.bar(r.done.length?'Also moved in week'+(r.done.length>1?'s ':' ')+r.done.join(', ')+'. Saved.'+(r.miss.length?' Not in week '+r.miss.join(', ')+'.':''):'No later week has that drill on '+esc(mv.fromDay)+'.',
+      r.done.length?[{label:'Undo',run:()=>{DD.restore(snap2);DD.rerender(mv.athId,mv.wi);DD.bar('Later weeks restored. Saved.');}}]:[]);
+  }});
+  DD.bar('Moved <b>'+esc(mv.name)+'</b>'+(mv.crossDay?' to '+esc(mv.toDay):'')+'. Saved.',acts);
+};
+DD.parse=function(el){
+  const inp=el.querySelector('input[onchange*="\'name\'"]'); if(!inp)return null;
+  const m=(inp.getAttribute('onchange')||'').match(/editEx\('([^']+)',(\d+),(\d+),(\d+),(\d+),'name'/);
+  return m?{athId:m[1],wi:+m[2],di:+m[3],si:+m[4],ei:+m[5]}:null;
+};
+DD.rows=function(root){
+  if(!root)return [];
+  return [...root.querySelectorAll('.prog-week .tbl tbody tr')].map(el=>({el,m:DD.parse(el)})).filter(r=>r.m);
+};
+DD.zones=function(root){
+  return [...root.querySelectorAll('.prog-week .prog-day')].map(el=>{
+    const add=el.querySelector('button[onclick*="addEx("]');
+    const m=add&&(add.getAttribute('onclick')||'').match(/addEx\('([^']+)',(\d+),(\d+),(\d+)\)/);
+    if(!m)return null;
+    const items=DD.rows(el).map(r=>r.el);
+    return {el,id:{di:+m[3],si:+m[4]},items,empty:add};
+  }).filter(Boolean);
+};
+DD.GRIP='<svg viewBox="0 0 12 18" width="10" height="15" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/><circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></g></svg>';
+DD.decorate=function(){
+  const root=document.getElementById('prog-detail'); if(!root)return;
+  DD.rows(root).forEach(({el,m})=>{
+    if(el.querySelector('.dd-h'))return;
+    const td=el.querySelector('input[onchange*="\'name\'"]').closest('td')||el.cells[0];
+    if(!td)return;
+    const h=document.createElement('button');
+    h.type='button';h.className='dd-h';h.innerHTML=DD.GRIP;
+    h.title='Drag to move, or tap for options';
+    h.setAttribute('aria-label','Move '+(el.querySelector('input[onchange*="\'name\'"]').value||'exercise'));
+    h.addEventListener('pointerdown',ev=>DD.start(ev,el,{
+      zones:()=>DD.zones(root),
+      label:()=>DD.label(m),
+      tap:()=>DD.menu(m),
+      drop:(z,idx)=>{
+        const snap=DD.snap([m.athId]);
+        const mv=DD.move(m.athId,m.wi,{di:m.di,si:m.si,ei:m.ei},{di:z.id.di,si:z.id.si,ei:idx});
+        if(mv)DD.afterMove(mv,snap);
+      }
+    }));
+    h.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();DD.menu(m);}});
+    td.insertBefore(h,td.firstChild);
+    el.classList.add('dd-row');
+  });
+};
+DD.label=function(m){
+  try{const ex=S.programs[m.athId].weeks_data[m.wi].days[m.di].sessions[m.si].exercises[m.ei];
+    return esc(ex.name)+(ex.sets&&ex.reps?' <span>'+esc(ex.sets)+' × '+esc(ex.reps)+'</span>':'');}catch(e){return 'Exercise';}
+};
+
+/* tap menu */
+DD.menu=function(m){
+  const p=S.programs[m.athId]; if(!p)return;
+  const w=p.weeks_data[m.wi], d=w.days[m.di], s=d.sessions[m.si], ex=s.exercises[m.ei], n=s.exercises.length;
+  const opts=[];
+  if(m.ei>0)opts.push(['Move up',{di:m.di,si:m.si,ei:m.ei-1}],['Move to top',{di:m.di,si:m.si,ei:0}]);
+  if(m.ei<n-1)opts.push(['Move down',{di:m.di,si:m.si,ei:m.ei+2}],['Move to bottom',{di:m.di,si:m.si,ei:n}]);
+  const other=[];
+  w.days.forEach((dd,di)=>(dd.sessions||[]).forEach((ss,si)=>{if(di===m.di&&si===m.si)return;other.push([dd.day+' · '+ss.type,{di,si,ei:(ss.exercises||[]).length}]);}));
+  DD.closeMenu();
+  const ov=document.createElement('div');ov.id='dd-menu';
+  ov.innerHTML='<div class="dd-sheet" role="dialog" aria-label="Move exercise">'
+    +'<div class="dd-sh"><div><div class="dd-eyebrow">Move · Week '+w.week+' · '+esc(d.day)+'</div><div class="dd-t">'+esc(ex.name)+'</div></div><button type="button" class="dd-x" aria-label="Close">×</button></div>'
+    +(opts.length?'<div class="dd-grp">'+opts.map((o,i)=>'<button type="button" data-o="'+i+'">'+o[0]+'</button>').join('')+'</div>':'')
+    +(other.length?'<div class="dd-lbl">Move to another day (goes to the end)</div><div class="dd-grp dd-days">'+other.map((o,i)=>'<button type="button" data-d="'+i+'">'+esc(o[0])+'</button>').join('')+'</div>':'')
+    +(m.wi<p.weeks_data.length-1?'<label class="dd-chk"><input type="checkbox" id="dd-later"> Same move in weeks '+(w.week+1)+'-'+p.weeks_data[p.weeks_data.length-1].week+'</label>':'')
+    +'</div>';
+  document.body.appendChild(ov);DD.guard(ov);
+  const go_=to=>{
+    const later=!!(ov.querySelector('#dd-later')||{}).checked;
+    DD.closeMenu();
+    const snap=DD.snap([m.athId]);
+    const mv=DD.move(m.athId,m.wi,{di:m.di,si:m.si,ei:m.ei},to); if(!mv)return;
+    if(later){
+      const r=DD.later(mv); save(); DD.rerender(mv.athId,mv.wi,{di:mv.toDi,si:mv.toSi,ei:mv.toEi});
+      DD.bar('Moved <b>'+esc(mv.name)+'</b> in week '+w.week+(r.done.length?' and '+r.done.join(', '):'')+'. Saved.'+(r.miss.length?' Not in week '+r.miss.join(', ')+'.':''),
+        [{label:'Undo',run:()=>{DD.restore(snap);DD.rerender(mv.athId,mv.wi);DD.bar('Move undone. Saved.');}}]);
+    }else DD.afterMove(mv,snap);
+  };
+  ov.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>go_(opts[+b.dataset.o][1]));
+  ov.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>go_(other[+b.dataset.d][1]));
+  ov.querySelector('.dd-x').onclick=DD.closeMenu;
+  ov.addEventListener('click',e=>{if(e.target===ov)DD.closeMenu();});
+  const f=ov.querySelector('.dd-grp button');if(f)try{f.focus();}catch(e){}
+};
+/* a touch tap sends a click ~after pointerup, right where the sheet just
+   opened: swallow clicks for the first 450 ms so it can't close the sheet
+   or press a move button by itself */
+DD.guard=function(ov){
+  const t0=Date.now();
+  ov.addEventListener('click',e=>{if(Date.now()-t0<450){e.stopPropagation();e.preventDefault();}},true);
+};
+DD.closeMenu=()=>{const o=document.getElementById('dd-menu');if(o)o.remove();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){DD.closeMenu();if(DD.cur)DD.end(true);}});
+
+/* ---- drag engine (pointer events: mouse, touch, pen) ---- */
+DD.scroller=function(el){
+  for(let n=el&&el.parentElement;n&&n!==document.body;n=n.parentElement){
+    const oy=getComputedStyle(n).overflowY;
+    if((oy==='auto'||oy==='scroll')&&n.scrollHeight>n.clientHeight)return n;
+  }
+  return document.scrollingElement||document.documentElement;
+};
+DD.start=function(ev,el,o){
+  if(ev.button!=null&&ev.button!==0)return;
+  ev.preventDefault();
+  const h=ev.currentTarget;
+  try{h.setPointerCapture(ev.pointerId);}catch(e){}
+  DD.cur={el,o,h,id:ev.pointerId,x0:ev.clientX,y0:ev.clientY,x:ev.clientX,y:ev.clientY,on:false,sc:DD.scroller(el)};
+  h.addEventListener('pointermove',DD.onMove);
+  h.addEventListener('pointerup',DD.onUp);
+  h.addEventListener('pointercancel',DD.onCancel);
+};
+DD.begin=function(){
+  const c=DD.cur;c.on=true;
+  const r=c.el.getBoundingClientRect();
+  const g=document.createElement('div');g.id='dd-ghost';g.innerHTML=c.o.label();
+  g.style.width=Math.min(r.width,340)+'px';
+  document.body.appendChild(g);c.ghost=g;
+  const ln=document.createElement('div');ln.id='dd-line';document.body.appendChild(ln);c.line=ln;
+  c.el.classList.add('dd-src');document.body.classList.add('dd-dragging');
+  c.zs=c.o.zones();
+  DD.tick();
+};
+DD.onMove=function(ev){
+  const c=DD.cur;if(!c||ev.pointerId!==c.id)return;
+  c.x=ev.clientX;c.y=ev.clientY;
+  if(!c.on&&Math.hypot(c.x-c.x0,c.y-c.y0)>6)DD.begin();
+  if(c.on)DD.track();
+};
+DD.track=function(){
+  const c=DD.cur;
+  c.ghost.style.transform='translate('+(c.x+12)+'px,'+(c.y-18)+'px)';
+  // zone under the pointer (keep the last one while crossing a gap)
+  const z=c.zs.find(z=>{const r=z.el.getBoundingClientRect();return c.x>=r.left-8&&c.x<=r.right+8&&c.y>=r.top-8&&c.y<=r.bottom+8;})||c.z;
+  c.z=z;
+  if(!z){c.line.style.display='none';c.idx=null;return;}
+  const items=z.items;
+  let idx=items.length;
+  for(let i=0;i<items.length;i++){const r=items[i].getBoundingClientRect();if(c.y<r.top+r.height/2){idx=i;break;}}
+  c.idx=idx;
+  const zr=(items[0]||z.el).getBoundingClientRect();
+  let y;
+  if(!items.length)y=z.empty.getBoundingClientRect().top-6;
+  else if(idx<items.length)y=items[idx].getBoundingClientRect().top-6;
+  else y=items[items.length-1].getBoundingClientRect().bottom+4;
+  c.line.style.display='block';
+  c.line.style.left=zr.left+'px';c.line.style.width=zr.width+'px';c.line.style.top=(y-1)+'px';
+};
+DD.tick=function(){
+  const c=DD.cur;if(!c||!c.on)return;
+  const sc=c.sc, isDoc=sc===document.scrollingElement||sc===document.documentElement;
+  const r=isDoc?{top:0,bottom:window.innerHeight}:sc.getBoundingClientRect();
+  const edge=70;let dy=0;
+  if(c.y<r.top+edge)dy=-Math.ceil((r.top+edge-c.y)/5);
+  else if(c.y>r.bottom-edge)dy=Math.ceil((c.y-(r.bottom-edge))/5);
+  if(dy){sc.scrollTop+=Math.max(-24,Math.min(24,dy));DD.track();}
+  c.raf=requestAnimationFrame(DD.tick);
+};
+DD.onUp=function(ev){
+  const c=DD.cur;if(!c||ev.pointerId!==c.id)return;
+  if(!c.on){DD.end(true);c.o.tap();return;}
+  const z=c.z, idx=c.idx;
+  DD.end(true);
+  if(z&&idx!=null)c.o.drop(z,idx);
+};
+DD.onCancel=function(ev){const c=DD.cur;if(c&&ev.pointerId===c.id)DD.end(true);};
+DD.end=function(){
+  const c=DD.cur;if(!c)return;DD.cur=null;
+  cancelAnimationFrame(c.raf);
+  c.h.removeEventListener('pointermove',DD.onMove);c.h.removeEventListener('pointerup',DD.onUp);c.h.removeEventListener('pointercancel',DD.onCancel);
+  try{c.h.releasePointerCapture(c.id);}catch(e){}
+  if(c.ghost)c.ghost.remove();if(c.line)c.line.remove();
+  c.el.classList.remove('dd-src');document.body.classList.remove('dd-dragging');
+};
+
+/* ---- group program rows ---- */
+DD.decorateGroup=function(){
+  const host=document.getElementById('gv-prog'); if(!host)return;
+  const gid=RX._grpView; const g=gid&&RX.grp.get(gid); if(!g)return;
+  const st=RX.gv.state[gid]||{}; const wk=st.wk, day=st.day;
+  const body=host.querySelector('.gv-body'); if(!body)return;
+  const rowsEl=[...body.querySelectorAll('.gv-row[data-key]')];
+  rowsEl.forEach((el,i)=>{
+    const rh=el.querySelector('.gv-rh'); if(!rh||rh.querySelector('.dd-h'))return;
+    const key=el.dataset.key;
+    const h=document.createElement('button');
+    h.type='button';h.className='dd-h dd-gh';h.innerHTML=DD.GRIP;
+    h.title='Drag to move for the whole group, or tap for options';
+    h.setAttribute('aria-label','Move '+((el.querySelector('.gv-exn')||{}).value||'drill')+' for the group');
+    const drop=idx=>{
+      const snap=DD.snap(RX.gv.withProg(g).map(a=>a.id));
+      const n=DD.groupMove(gid,wk,day,key,idx);
+      if(!n)return;
+      save(); RX.gv.render();
+      const moved=[...document.querySelectorAll('#gv-prog .gv-row')].find(r=>r.dataset.key===key);
+      if(moved){moved.classList.add('dd-flash');setTimeout(()=>moved.classList.remove('dd-flash'),1400);}
+      DD.bar('Moved for '+n+' athlete'+(n>1?'s':'')+'. Saved.',[{label:'Undo',run:()=>{DD.restore(snap);RX.gv.render();DD.bar('Move undone. Saved.');}}]);
+    };
+    h.addEventListener('pointerdown',ev=>DD.start(ev,el,{
+      zones:()=>[{el:body,id:'g',items:[...body.querySelectorAll('.gv-row[data-key]')],empty:body.querySelector('.gv-add')||body}],
+      label:()=>esc(((el.querySelector('.gv-exn')||{}).value)||el.querySelector('.gv-rh').textContent.trim().slice(0,40)),
+      tap:()=>DD.groupMenu(i,rowsEl.length,drop,el),
+      drop:(z,idx)=>drop(idx)
+    }));
+    h.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();DD.groupMenu(i,rowsEl.length,drop,el);}});
+    rh.insertBefore(h,rh.firstChild);
+  });
+};
+DD.groupMenu=function(i,n,drop,el){
+  const opts=[];
+  if(i>0)opts.push(['Move up',i-1],['Move to top',0]);
+  if(i<n-1)opts.push(['Move down',i+2],['Move to bottom',n]);
+  if(!opts.length)return;
+  DD.closeMenu();
+  const ov=document.createElement('div');ov.id='dd-menu';
+  const name=((el.querySelector('.gv-exn')||{}).value)||el.querySelector('.gv-rh').textContent.trim();
+  ov.innerHTML='<div class="dd-sheet" role="dialog" aria-label="Move drill"><div class="dd-sh"><div><div class="dd-eyebrow">Move for the whole group</div><div class="dd-t">'+esc(name)+'</div></div><button type="button" class="dd-x" aria-label="Close">×</button></div>'
+    +'<div class="dd-grp">'+opts.map((o,k)=>'<button type="button" data-o="'+k+'">'+o[0]+'</button>').join('')+'</div></div>';
+  document.body.appendChild(ov);DD.guard(ov);
+  ov.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{DD.closeMenu();drop(opts[+b.dataset.o][1]);});
+  ov.querySelector('.dd-x').onclick=DD.closeMenu;
+  ov.addEventListener('click',e=>{if(e.target===ov)DD.closeMenu();});
+};
+
+DD.CSS=`
+.dd-h{appearance:none;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text3,#777);cursor:grab;touch-action:none;
+  display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;padding:0;margin:0 6px 0 -4px;vertical-align:middle;-webkit-user-select:none;user-select:none;}
+.dd-h:hover,.dd-h:focus-visible{color:var(--text,#eee);border-color:rgba(255,255,255,.14);background:rgba(255,255,255,.04);outline:none;}
+.dd-h:active{cursor:grabbing;}
+#prog-detail .prog-week .tbl tbody tr.dd-row{position:relative;}
+#prog-detail .prog-week .tbl tbody tr.dd-row .dd-h{position:absolute;top:4px;left:6px;margin:0;}
+.gv-rh .dd-gh{margin:0 4px 0 -6px;flex:none;}
+.dd-src{opacity:.35;}
+.dd-flash{animation:ddFlash 1.4s ease-out;}
+@keyframes ddFlash{0%{box-shadow:0 0 0 2px rgba(225,59,49,.7);}100%{box-shadow:0 0 0 2px rgba(225,59,49,0);}}
+body.dd-dragging,body.dd-dragging *{cursor:grabbing !important;-webkit-user-select:none;user-select:none;}
+#dd-ghost{position:fixed;left:0;top:0;z-index:10050;pointer-events:none;background:#1b1d1a;color:#f4f1ec;border:1px solid rgba(255,255,255,.18);border-left:3px solid var(--brand,#e13b31);
+  border-radius:8px;padding:10px 12px;font:600 13px var(--disp,system-ui);box-shadow:0 10px 30px rgba(0,0,0,.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#dd-ghost span{font:500 11px var(--mono,monospace);color:#969792;margin-left:6px;}
+#dd-line{position:fixed;z-index:10049;height:3px;border-radius:2px;background:var(--brand,#e13b31);pointer-events:none;display:none;box-shadow:0 0 0 2px rgba(225,59,49,.2);}
+#dd-bar{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translate(-50%,140%);z-index:10040;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  max-width:calc(100vw - 32px);background:#1b1d1a;color:#f4f1ec;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px 12px;font:400 13px/1.4 var(--disp,system-ui);
+  box-shadow:0 10px 30px rgba(0,0,0,.45);transition:transform .2s ease;padding-right:44px;}
+#dd-bar.on{transform:translate(-50%,0);}
+@media (max-width:600px){#dd-bar{bottom:calc(96px + env(safe-area-inset-bottom,0px));width:calc(100vw - 32px);box-sizing:border-box;}#dd-bar:not(.on){transform:translate(-50%,calc(100% + 116px));}}
+#dd-bar .dd-msg{flex:1 1 160px;min-width:0;}
+#dd-bar button{white-space:nowrap;}
+#dd-bar .dd-x{position:absolute;top:50%;right:6px;transform:translateY(-50%);}
+#dd-bar button{appearance:none;background:transparent;border:1px solid rgba(255,255,255,.2);color:#f4f1ec;border-radius:6px;padding:7px 10px;font:600 11px var(--mono,monospace);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;min-height:32px;}
+#dd-bar button:hover{border-color:rgba(255,255,255,.4);}
+#dd-bar .dd-x,#dd-menu .dd-x{border:none;font-size:18px;padding:4px 8px;color:#969792;text-transform:none;background:transparent;cursor:pointer;min-width:32px;min-height:32px;}
+#dd-menu{position:fixed;inset:0;z-index:10060;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;}
+@media (min-width:700px){#dd-menu{align-items:center;}}
+#dd-menu .dd-sheet{background:#141613;color:#f4f1ec;border:1px solid rgba(255,255,255,.12);border-radius:14px 14px 0 0;width:100%;max-width:440px;max-height:85vh;overflow-y:auto;
+  padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));}
+@media (min-width:700px){#dd-menu .dd-sheet{border-radius:14px;}}
+#dd-menu .dd-sh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}
+#dd-menu .dd-eyebrow,#dd-menu .dd-lbl{font:500 9px var(--mono,monospace);letter-spacing:.12em;text-transform:uppercase;color:#969792;}
+#dd-menu .dd-lbl{margin:16px 0 8px;}
+#dd-menu .dd-t{font:700 15px var(--disp,system-ui);margin-top:4px;}
+#dd-menu .dd-grp{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+#dd-menu .dd-days{grid-template-columns:1fr;}
+#dd-menu .dd-grp button{appearance:none;background:#1b1d1a;border:1px solid rgba(255,255,255,.1);color:#f4f1ec;border-radius:8px;padding:12px;font:500 13px var(--disp,system-ui);text-align:left;cursor:pointer;min-height:44px;}
+#dd-menu .dd-grp button:hover,#dd-menu .dd-grp button:focus-visible{border-color:rgba(255,255,255,.3);outline:none;}
+#dd-menu .dd-chk{display:flex;align-items:center;gap:10px;margin-top:16px;font:400 13px var(--disp,system-ui);color:#d8d5cf;cursor:pointer;}
+#dd-menu .dd-chk input{width:18px;height:18px;accent-color:var(--brand,#e13b31);}
+@media print{.dd-h,#dd-bar{display:none !important;}}
+`;
+DD.mountCSS=function(){if(document.getElementById('dd-css'))return;const s=document.createElement('style');s.id='dd-css';s.textContent=DD.CSS;document.head.appendChild(s);};
+
+/* ---- hooks ---- */
+if(typeof window.showProgDetail==='function'){
+  const prev=window.showProgDetail;
+  window.showProgDetail=function(athId,forceWkIdx){
+    const r=prev.apply(this,arguments);
+    try{
+      const p=S.programs[athId];
+      DD.view={athId,wi:forceWkIdx!==undefined?forceWkIdx:(p&&p.currentWeek?p.currentWeek-1:0)};
+      DD.mountCSS();DD.decorate();
+    }catch(e){console.warn('[RX] move decorate',e);}
+    return r;
+  };
+}
+// delete / add stay on the week you are looking at, and deletes re-key logs
+window.delEx=function(athId,wi,di,si,ei){
+  if(!DD.remove(athId,wi,di,si,ei))return;
+  save();
+  const sc=DD.scroller(document.getElementById('prog-detail')),top=sc?sc.scrollTop:0;
+  showProgDetail(athId,wi);if(sc)sc.scrollTop=top;
+};
+window.addEx=function(athId,wi,di,si){
+  const p=S.programs[athId];if(!p)return;
+  try{p.weeks_data[wi].days[di].sessions[si].exercises.push({name:'New exercise',sets:'3',reps:'5',weight:'',rpe:'',cue:''});}catch(e){return;}
+  p.edited=true;save();
+  const sc=DD.scroller(document.getElementById('prog-detail')),top=sc?sc.scrollTop:0;
+  showProgDetail(athId,wi);if(sc)sc.scrollTop=top;
+};
+if(RX.gv&&typeof RX.gv.render==='function'){
+  const prevR=RX.gv.render;
+  RX.gv.render=function(){const r=prevR.apply(this,arguments);try{DD.mountCSS();DD.decorateGroup();}catch(e){console.warn('[RX] group move decorate',e);}return r;};
+}
+})();
+
+/* ═══════════════ SECTION 27 — VELOCITY (LIVE CAMERA VBT) ═════════════════
+   The Lab gets a second tool: Velocity. A coloured band wrapped round the
+   bar sleeve is the marker; the phone camera follows it and turns the trace
+   into bar speed, so the same rig works for trap bar, back squat, front
+   squat, hip thrust or bench.
+
+   How it works
+   1. CAMERA — getUserMedia, back or front, 60 fps when the device offers it.
+      Frames are timed by requestVideoFrameCallback (media time), not by the
+      render loop, so a dropped frame does not become a wrong speed.
+   2. MARKER — each frame is drawn small (256 px wide), converted to HSV and
+      thresholded on the marker hue. The largest connected blob is the band;
+      its centre is the bar height, its width across the bar is the ruler.
+      Tap the video to sample a different marker colour.
+   3. SCALE — the coach measures the band once (default 7.6 cm / 3 in). Bar
+      mode uses the blob's width, hip mode its height. The running median of
+      the last 60 frames is used, so one bad frame cannot move the scale.
+   4. ACCURACY — the drop test. Drop the marker, the app fits the free-fall
+      segment and reports the measured g. Gravity is 9.81 m/s^2 everywhere,
+      so if the number comes back right, the scale AND the frame timing are
+      both right; if it is off by k, every distance is off by k and the app
+      offers that correction. One test proves the whole chain.
+   5. REPS — the smoothed trace is split into concentric phases (bottom to
+      top, at least the minimum rep height). Each rep gets mean concentric
+      velocity, peak velocity and range. Velocity loss is measured off the
+      best rep of the set, the usual way fatigue is tracked.
+   6. PROFILE — mean velocity against load across 3+ loads is a straight
+      line (Loturco / Martinez-Cava; hip thrust: Bishop 2019, de Hoyo 2023).
+      From the fit: estimated 1RM at the minimum velocity threshold for that
+      lift, V0 (speed at no load) and R^2. Saved on the athlete, shown on her
+      profile, and able to rewrite the "% of 1RM" loads in the current week.
+
+   Honest limits, shown in the app as well: a browser gets ~30-60 fps, not
+   the 240 fps of the validated phone apps, so mean velocity is solid and
+   peak velocity is rough; the camera must be side-on and level; and the
+   band must be a marker only — a band that also pulls adds an unknown load
+   and makes every number wrong. */
+(function(){
+const VB={};
+RX.vbt=VB;
+VB.VER=1;
+
+/* ---- lifts: minimum velocity thresholds (published typical values) ---- */
+VB.LIFTS=[
+  {id:'trap',name:'Trap Bar Deadlift',mvt:0.20,minRom:25},
+  {id:'back',name:'Back Squat',mvt:0.30,minRom:25},
+  {id:'front',name:'Front Squat',mvt:0.30,minRom:25},
+  {id:'hip',name:'Hip Thrust',mvt:0.25,minRom:12},
+  {id:'bench',name:'Bench Press',mvt:0.17,minRom:15},
+  {id:'other',name:'Other lift',mvt:0.30,minRom:15}
+];
+VB.lift=id=>VB.LIFTS.find(l=>l.id===id)||VB.LIFTS[0];
+
+/* ---- state ---- */
+VB.st={on:false,mode:'idle',facing:'environment',markerCm:7.6,markerOn:'bar',hue:5,lift:'trap',load:'',
+  calPx:null,calSrc:'band',fps:0,samples:[],sets:[],live:[],liveT:0,rise:false,voice:false,last:null,drop:null,athId:null};
+VB.PROC_W=320;                       // frames are processed at this width
+/* cm per processed pixel: the gravity calibration if it has been run,
+   otherwise the measured band across the bar */
+VB.cmPer=function(){
+  if(VB.st.calPx)return VB.st.calPx;
+  const med=VB.median(VB.st.dims||[]);
+  return med?VB.st.markerCm/med:null;
+};
+
+/* ═════ tracking maths ═════ */
+VB.rgb2hsv=function(r,g,b){
+  r/=255;g/=255;b/=255;
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+  let h=0;
+  if(d){
+    if(mx===r)h=60*(((g-b)/d)%6);
+    else if(mx===g)h=60*((b-r)/d+2);
+    else h=60*((r-g)/d+4);
+  }
+  if(h<0)h+=360;
+  return [h,mx?d/mx:0,mx];
+};
+VB.hueNear=(h,t)=>{const d=Math.abs(h-t);return Math.min(d,360-d);};
+/* largest connected blob of marker-coloured pixels: {cx,cy,w,h,n} in px */
+VB.blob=function(data,W,H,hue){
+  const n=W*H, mask=new Uint8Array(n);
+  let count=0;
+  for(let i=0;i<n;i++){
+    const p=i*4, r=data[p], g=data[p+1], b=data[p+2];
+    if(r<50&&g<50&&b<50)continue;
+    const [hh,ss,vv]=VB.rgb2hsv(r,g,b);
+    if(ss>0.40&&vv>0.20&&VB.hueNear(hh,hue)<20){mask[i]=1;count++;}
+  }
+  if(count<12)return null;
+  // flood fill (iterative, typed stack) for the largest component
+  const lab=new Int32Array(n).fill(-1), stack=new Int32Array(n);
+  let best=null,id=0;
+  for(let i=0;i<n;i++){
+    if(!mask[i]||lab[i]>=0)continue;
+    let sp=0;stack[sp++]=i;lab[i]=id;
+    let cnt=0,sx=0,sy=0,x0=W,x1=0,y0=H,y1=0;
+    while(sp){
+      const c=stack[--sp], x=c%W, y=(c-x)/W;
+      cnt++;sx+=x;sy+=y;
+      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+      if(x>0&&mask[c-1]&&lab[c-1]<0){lab[c-1]=id;stack[sp++]=c-1;}
+      if(x<W-1&&mask[c+1]&&lab[c+1]<0){lab[c+1]=id;stack[sp++]=c+1;}
+      if(y>0&&mask[c-W]&&lab[c-W]<0){lab[c-W]=id;stack[sp++]=c-W;}
+      if(y<H-1&&mask[c+W]&&lab[c+W]<0){lab[c+W]=id;stack[sp++]=c+W;}
+    }
+    if(!best||cnt>best.n)best={n:cnt,cx:sx/cnt,cy:sy/cnt,x0,x1,y0,y1,w:x1-x0+1,h:y1-y0+1};
+    id++;
+  }
+  return best&&best.n>=12?best:null;
+};
+VB.median=a=>{if(!a.length)return null;const s=a.slice().sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+/* centred 5-point moving average, then central-difference velocity (m/s) */
+VB.smooth=function(v,k){
+  k=k||2;const out=new Array(v.length);
+  for(let i=0;i<v.length;i++){
+    let s=0,c=0;
+    for(let j=Math.max(0,i-k);j<=Math.min(v.length-1,i+k);j++){s+=v[j];c++;}
+    out[i]=s/c;
+  }
+  return out;
+};
+VB.velocity=function(t,y){
+  const v=new Array(y.length).fill(0);
+  for(let i=1;i<y.length-1;i++){const dt=t[i+1]-t[i-1];v[i]=dt>0?(y[i+1]-y[i-1])/dt:0;}
+  if(y.length>1){v[0]=v[1];v[y.length-1]=v[y.length-2];}
+  return v;
+};
+
+/* reps from a trace: samples [{t, py}] in canvas pixels, up positive.
+   cmPer = cm per pixel (from the gravity calibration, or the band width) */
+VB.reps=function(samples,minRom,cmPer){
+  if(!samples||samples.length<10||!cmPer)return [];
+  const t=samples.map(s=>s.t), raw=samples.map(s=>s.py*cmPer/100);
+  const y=VB.smooth(raw,1), v=VB.velocity(t,y);
+  const reps=[], minR=(minRom||15)/100, N=y.length;
+  let i=1;
+  while(i<N){
+    while(i<N&&v[i]<=0.05)i++;                  // a rise starts
+    if(i>=N)break;
+    let s=i;
+    while(i<N&&v[i]>0.05)i++;                   // and ends
+    let e=Math.min(i,N-1);
+    // walk out to the real turnaround points: lowest point before the rise,
+    // highest after it. This is the concentric phase coaches mean, and it
+    // keeps the smoothing from eating the first and last centimetres.
+    // on the raw trace, so the smoothing does not stretch the phase; the
+    // tolerance is 1.5 px of tracking noise, below which nothing has moved
+    const eps=1.5*cmPer/100, flat=0.5*cmPer/100;
+    while(s>0&&raw[s-1]<raw[s]-eps)s--;
+    while(e<N-1&&raw[e+1]>raw[e]+eps)e++;
+    // then trim the still frames the smoothing pulled in at either end,
+    // so a pause at the bottom is not counted as part of the lift
+    while(s<e&&raw[s+1]<=raw[s]+flat)s++;
+    while(e>s&&raw[e-1]>=raw[e]-flat)e--;
+    const rom=raw[e]-raw[s], dt=t[e]-t[s];
+    if(rom>=minR&&dt>0.1&&dt<8){
+      let pv=0;for(let j=s;j<=e;j++)if(v[j]>pv)pv=v[j];
+      reps.push({t0:+t[s].toFixed(2),rom:+(rom*100).toFixed(1),mcv:+(rom/dt).toFixed(3),pv:+pv.toFixed(3),dur:+dt.toFixed(2)});
+    }
+  }
+  return reps;
+};
+
+/* free fall: fit y = a/2 t^2 + b t + c over the fastest falling stretch.
+   Fitted in PIXELS, so it also hands back the scale: a fall is 981 cm/s^2,
+   so cm-per-pixel = 981 / (pixels per second squared). That is the gravity
+   calibration — it needs no tape measure and no guess about the band. */
+VB.dropG=function(samples,cmPer){
+  if(!samples||samples.length<10)return null;
+  const t=samples.map(s=>s.t), raw=samples.map(s=>s.py);
+  const y=VB.smooth(raw,1), v=VB.velocity(t,y);
+  const fast=-0.8*100/(cmPer||1);        // 0.8 m/s in px/s
+  let bs=-1,be=-1,cs=-1;
+  for(let i=0;i<v.length;i++){
+    if(v[i]<fast){if(cs<0)cs=i;if(be<0||i-cs>be-bs){bs=cs;be=i;}}
+    else cs=-1;
+  }
+  if(bs<0||be-bs<8)return null;
+  bs+=2;be-=2;            // the first and last frames of the fall are half
+                          // frames (the release and the landing): drop them
+  let n=0,st=0,st2=0,st3=0,st4=0,sy=0,sty=0,st2y=0;
+  const t0=t[bs];
+  for(let i=bs;i<=be;i++){
+    const x=t[i]-t0,Y=raw[i];
+    n++;st+=x;st2+=x*x;st3+=x*x*x;st4+=x*x*x*x;sy+=Y;sty+=x*Y;st2y+=x*x*Y;
+  }
+  // solve the 3x3 normal equations for [c, b, a2]
+  const M=[[n,st,st2],[st,st2,st3],[st2,st3,st4]], R=[sy,sty,st2y];
+  for(let c=0;c<3;c++){
+    let p=c;for(let r=c+1;r<3;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;
+    if(Math.abs(M[p][c])<1e-12)return null;
+    [M[c],M[p]]=[M[p],M[c]];[R[c],R[p]]=[R[p],R[c]];
+    for(let r=0;r<3;r++){
+      if(r===c)continue;
+      const f=M[r][c]/M[c][c];
+      for(let k=c;k<3;k++)M[r][k]-=f*M[c][k];
+      R[r]-=f*R[c];
+    }
+  }
+  const aPx=Math.abs(2*R[2]/M[2][2]);    // px/s^2
+  if(!(aPx>1))return null;
+  const cmPerPx=981/aPx;                  // the gravity calibration
+  const g=aPx*(cmPer||cmPerPx)/100;       // what the current scale reads back
+  if(!(g>2&&g<25))return null;
+  return {g:+g.toFixed(2),err:+((g/9.81-1)*100).toFixed(1),k:+(9.81/g).toFixed(3),
+    cmPerPx:+cmPerPx.toFixed(4),frames:be-bs+1,fall:+((raw[bs]-raw[be])*(cmPer||cmPerPx)).toFixed(1)};
+};
+
+/* load-velocity fit: v = a*load + b */
+VB.profile=function(sets,mvt){
+  const pts=sets.filter(s=>s.load>0&&s.best>0).map(s=>({x:+s.load,y:+s.best}));
+  const byLoad={};pts.forEach(p=>{if(!byLoad[p.x]||p.y>byLoad[p.x])byLoad[p.x]=p.y;});
+  const P=Object.entries(byLoad).map(([x,y])=>({x:+x,y}));
+  if(P.length<2)return null;
+  const n=P.length, sx=P.reduce((t,p)=>t+p.x,0), sy=P.reduce((t,p)=>t+p.y,0);
+  const sxx=P.reduce((t,p)=>t+p.x*p.x,0), sxy=P.reduce((t,p)=>t+p.x*p.y,0);
+  const d=n*sxx-sx*sx; if(Math.abs(d)<1e-9)return null;
+  const a=(n*sxy-sx*sy)/d, b=(sy-a*sx)/n;
+  if(a>=0)return {pts:P,slope:a,icept:b,bad:'Velocity did not drop as load went up — check the loads or retake the set.'};
+  const ym=sy/n;
+  const ssTot=P.reduce((t,p)=>t+(p.y-ym)*(p.y-ym),0), ssRes=P.reduce((t,p)=>t+Math.pow(p.y-(a*p.x+b),2),0);
+  const r2=ssTot>0?1-ssRes/ssTot:1;
+  return {pts:P,slope:a,icept:b,r2:+r2.toFixed(3),v0:+b.toFixed(2),
+    e1rm:Math.round((mvt-b)/a),l0:Math.round(-b/a),mvt,n:P.length,
+    range:[Math.min(...P.map(p=>p.x)),Math.max(...P.map(p=>p.x))]};
+};
+VB.pctAt=(prof,pct)=>prof&&prof.e1rm?Math.round(prof.e1rm*pct/100/5)*5:null;
+
+/* the setup survives a reload: same gym, same phone spot, same band */
+VB.KEY='fc_vbt_setup';
+VB.persist=function(){
+  try{localStorage.setItem(VB.KEY,JSON.stringify({markerCm:VB.st.markerCm,markerOn:VB.st.markerOn,hue:VB.st.hue,
+    lift:VB.st.lift,calPx:VB.st.calPx,calSrc:VB.st.calSrc,minRom:VB.st.minRom}));}catch(e){}
+};
+VB.restore=function(){
+  try{
+    const o=JSON.parse(localStorage.getItem(VB.KEY)||'null'); if(!o)return;
+    ['markerCm','markerOn','hue','lift','calPx','calSrc','minRom'].forEach(k=>{if(o[k]!=null)VB.st[k]=o[k];});
+  }catch(e){}
+};
+VB.restore();
+
+/* ═════ camera ═════ */
+VB.el=id=>document.getElementById(id);
+VB.ctx2d=function(cv,o){try{return cv&&cv.getContext?cv.getContext('2d',o):null;}catch(e){return null;}};
+VB.setStatus=function(msg,tone){
+  const s=VB.el('vbt-status'); if(!s)return;
+  s.textContent=msg||'';
+  s.className='vbt-status'+(tone?' vbt-'+tone:'');
+};
+VB.cams=async function(){
+  try{
+    const list=await navigator.mediaDevices.enumerateDevices();
+    return list.filter(d=>d.kind==='videoinput');
+  }catch(e){return [];}
+};
+VB.start=async function(){
+  const v=VB.el('vbt-video'); if(!v)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    VB.setStatus('This browser will not give a web app the camera. Open the app in Safari or Chrome over https (or localhost).','bad');return;
+  }
+  VB.stop(true);
+  const sel=VB.el('vbt-cam'), id=sel&&sel.value&&sel.value!=='auto'?sel.value:null;
+  const c={audio:false,video:id?{deviceId:{exact:id},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60}}
+    :{facingMode:{ideal:VB.st.facing},width:{ideal:1280},height:{ideal:720},frameRate:{ideal:60}}};
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia(c);
+    VB.st.stream=stream;v.srcObject=stream;
+    v.setAttribute('playsinline','');v.muted=true;
+    await v.play().catch(()=>{});
+    const tr=stream.getVideoTracks()[0], s=tr&&tr.getSettings?tr.getSettings():{};
+    VB.st.on=true;VB.st.camLabel=(tr&&tr.label)||'';
+    VB.render();
+    VB.setStatus('Camera on'+(s.width?' · '+s.width+'×'+s.height:'')+(s.frameRate?' · '+Math.round(s.frameRate)+' fps':'')+' · point it side-on and level, then tap the band in the picture if it is not boxed.','ok');
+    VB.loop();
+    VB.cams().then(ds=>{
+      if(!sel||sel.dataset.filled==='1'||!ds.length)return;
+      sel.dataset.filled='1';
+      sel.innerHTML='<option value="auto">Auto ('+(VB.st.facing==='environment'?'back':'front')+')</option>'
+        +ds.map((d,i)=>'<option value="'+esc(d.deviceId)+'">'+esc(d.label||('Camera '+(i+1)))+'</option>').join('');
+    });
+  }catch(e){
+    VB.setStatus('Camera blocked: '+(e&&e.name==='NotAllowedError'?'allow camera access for this site, then start again.':(e&&e.message)||e),'bad');
+  }
+};
+VB.stop=function(quiet){
+  VB.st.on=false;VB.st.mode='idle';
+  try{(VB.st.stream?VB.st.stream.getTracks():[]).forEach(t=>t.stop());}catch(e){}
+  VB.st.stream=null;
+  const v=VB.el('vbt-video'); if(v)v.srcObject=null;
+  if(!quiet){VB.setStatus('Camera off.');VB.render();}
+};
+VB.flip=function(){VB.st.facing=VB.st.facing==='environment'?'user':'environment';const s=VB.el('vbt-cam');if(s){s.value='auto';s.dataset.filled='';}VB.start();};
+
+/* the frame loop re-fetches the <video> every frame: a re-render replaces
+   the element, and a callback bound to the old one would silently stop */
+VB.loop=function(){
+  if(VB._looping)return;
+  VB._looping=true;
+  const step=(now,meta)=>{
+    const v=VB.el('vbt-video');
+    if(!VB.st.on||!v){VB._looping=false;return;}
+    try{VB.tick(meta&&meta.mediaTime!=null?meta.mediaTime:(now||performance.now())/1000);}catch(e){console.warn('[RX] vbt frame',e);}
+    if(v.requestVideoFrameCallback)v.requestVideoFrameCallback(step);
+    else requestAnimationFrame(t=>step(t,null));
+  };
+  const v0=VB.el('vbt-video');
+  if(v0&&v0.requestVideoFrameCallback)v0.requestVideoFrameCallback(step);else requestAnimationFrame(t=>step(t,null));
+};
+VB.tick=function(t){
+  const v=VB.el('vbt-video'), ov=VB.el('vbt-ov'); if(!v||!ov||!v.videoWidth)return;
+  if(!VB.work){VB.work=document.createElement('canvas');}
+  const W=VB.PROC_W, H=Math.max(1,Math.round(W*v.videoHeight/v.videoWidth));
+  if(VB.work.width!==W){VB.work.width=W;VB.work.height=H;}
+  const wx=VB.ctx2d(VB.work,{willReadFrequently:true}); if(!wx)return;
+  wx.drawImage(v,0,0,W,H);
+  const img=wx.getImageData(0,0,W,H);
+  const b=VB.blob(img.data,W,H,VB.st.hue);
+  // fps
+  if(VB.st.lastT!=null){const dt=t-VB.st.lastT;if(dt>0&&dt<1)VB.st.fps=VB.st.fps?VB.st.fps*0.9+0.1/dt:1/dt;}
+  VB.st.lastT=t;
+  VB.st.blob=b;
+  if(b){
+    VB.st.dims=(VB.st.dims||[]).concat(VB.st.markerOn==='bar'?b.w:b.h).slice(-60);
+    const cmPer=VB.cmPer();
+    VB.st.cmPerNow=cmPer;
+    VB.st.samples.push({t,py:H-b.cy});
+    if(VB.st.samples.length>5400)VB.st.samples.splice(0,VB.st.samples.length-5400);
+    const n=VB.st.samples.length;
+    if(n>4&&cmPer){
+      const s=VB.st.samples.slice(-5), dt=s[4].t-s[0].t;
+      const v=dt>0?(s[4].py-s[0].py)*cmPer/100/dt:0;
+      // faster than any barbell: that is the tracker losing the band
+      VB.st.vNow=Math.abs(v)>5?null:v;
+    }
+  }
+  if(b)VB.liveFeed();
+  VB.draw(ov,v,b,W,H);
+  VB.live();
+};
+VB.draw=function(ov,v,b,W,H){
+  const r=v.getBoundingClientRect();
+  const w=Math.round(r.width||v.clientWidth||320), h=Math.round(r.height||v.clientHeight||180);
+  if(!w||!h)return;
+  if(ov.width!==w||ov.height!==h){ov.width=w;ov.height=h;}
+  const x=VB.ctx2d(ov); if(!x)return;
+  x.clearRect(0,0,w,h);
+  // the video is letterboxed (object-fit: contain), so the overlay has to use
+  // the same scale and offsets or the box drifts off the band
+  const k=Math.min(w/W,h/H), ox=(w-W*k)/2, oy=(h-H*k)/2;
+  const sx=k, sy=k;
+  x.save();x.translate(ox,oy);
+  if(b){
+    x.strokeStyle='#b8ff57';x.lineWidth=2;
+    x.strokeRect(b.x0*sx,b.y0*sy,b.w*sx,b.h*sy);
+    x.fillStyle='#b8ff57';x.beginPath();x.arc(b.cx*sx,b.cy*sy,3,0,7);x.fill();
+    // recent path
+    const s=VB.st.samples.slice(-120);
+    if(s.length>2){
+      x.strokeStyle='rgba(184,255,87,.5)';x.lineWidth=1.5;x.beginPath();
+      s.forEach((p,i)=>{
+        const py=(H-p.py)*sy, px=b.cx*sx;
+        if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+      });
+      x.stroke();
+    }
+  }else{
+    x.fillStyle='rgba(225,59,49,.85)';x.font='600 13px system-ui';
+    x.fillText('No marker found — tap the band in the picture',12,24);
+  }
+  x.restore();
+};
+VB.sample=function(ev){
+  const v=VB.el('vbt-video'), ov=VB.el('vbt-ov'); if(!v||!v.videoWidth)return;
+  const r=ov.getBoundingClientRect();
+  const k=Math.min(r.width/v.videoWidth,r.height/v.videoHeight);
+  const ox=(r.width-v.videoWidth*k)/2, oy=(r.height-v.videoHeight*k)/2;
+  const px=(ev.clientX-r.left-ox)/(v.videoWidth*k), py=(ev.clientY-r.top-oy)/(v.videoHeight*k);
+  if(px<0||px>1||py<0||py>1){VB.setStatus('That was outside the picture — tap the band itself.','bad');return;}
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+  const cx=VB.ctx2d(c,{willReadFrequently:true}); if(!cx)return;
+  cx.drawImage(v,0,0);
+  const d=cx.getImageData(Math.max(0,Math.min(c.width-1,Math.round(px*c.width))),Math.max(0,Math.min(c.height-1,Math.round(py*c.height))),1,1).data;
+  const [h,s,val]=VB.rgb2hsv(d[0],d[1],d[2]);
+  if(s<0.3||val<0.2){VB.setStatus('That spot is too grey to track. Tap the middle of the band.','bad');return;}
+  VB.st.hue=h;VB.st.dims=[];VB.persist();
+  VB.setStatus('Marker colour set from the picture. Box should follow the band now.','ok');
+};
+
+/* ═════ live reps — no record button, no waiting ═════
+   Every frame asks one question: has the bar just stopped going up? When it
+   has, the last few seconds are run through the same rep maths as before and
+   any new rep is on screen (and spoken) before the athlete has re-racked. */
+VB.RISE=0.12, VB.FALL=0.03;
+VB.liveFeed=function(){
+  const st=VB.st;
+  if(st.mode==='drop')return;
+  const v=st.vNow;
+  if(v==null)return;
+  if(!st.rise&&v>VB.RISE){st.rise=true;return;}
+  if(!st.rise||v>VB.FALL)return;
+  st.rise=false;
+  const cm=VB.cmPer(); if(!cm)return;
+  const t=st.samples[st.samples.length-1].t;
+  const tail=st.samples.filter(x=>x.t>t-8);
+  const reps=VB.reps(tail,st.minRom||VB.lift(st.lift).minRom,cm);
+  const fresh=reps.filter(r=>r.t0>st.liveT+0.05);
+  if(!fresh.length)return;
+  fresh.forEach(r=>{st.live.push(r);st.liveT=r.t0;});
+  const r=st.live[st.live.length-1], best=Math.max(...st.live.map(x=>x.mcv));
+  r.loss=Math.round((1-r.mcv/best)*100);
+  VB.say(r);
+  VB.paintReps();
+};
+VB.say=function(r){
+  if(!VB.st.voice||typeof speechSynthesis==='undefined')return;
+  try{
+    const u=new SpeechSynthesisUtterance(r.mcv.toFixed(2).replace('.',' point ')+(r.loss>=20?', twenty percent down':''));
+    u.rate=1.15;u.volume=1;speechSynthesis.speak(u);
+  }catch(e){}
+};
+/* big screen: the phone is propped at the rack and the coach is across the
+   room, so the last rep fills the screen and nothing else is on it */
+VB.big=function(on){
+  const wrap=document.getElementById('vbt'); if(!wrap)return;
+  wrap.classList.toggle('vbt-big',!!on);
+  try{if(on&&wrap.requestFullscreen)wrap.requestFullscreen().catch(()=>{});else if(!on&&document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen().catch(()=>{});}catch(e){}
+};
+VB.dropRep=function(i){
+  VB.st.live.splice(i,1);
+  if(!VB.st.live.length)VB.st.liveT=0;
+  VB.paintReps();
+};
+VB.newSet=function(){
+  VB.st.live=[];VB.st.liveT=0;VB.st.rise=false;
+  VB.setStatus('New set — lift and the reps appear as they happen.','ok');
+  VB.render();
+};
+VB.voice=function(on){
+  VB.st.voice=!!on;
+  if(on)VB.say({mcv:0.00,loss:0});      // the first speak needs the tap that turned it on
+  VB.persist();
+};
+/* the rep table and the big number are patched in place: a full re-render
+   would rebuild the <video> mid-set */
+VB.paintReps=function(){
+  const body=VB.el('vbt-reps'), badge=VB.el('vbt-last'), n=VB.el('vbt-count');
+  const live=VB.st.live;
+  if(badge){
+    const r=live[live.length-1];
+    badge.innerHTML=r?('<b>'+r.mcv.toFixed(2)+'</b><span>Rep '+live.length+' · '+r.rom+' cm'+(r.loss?' · -'+r.loss+'%':'')+'</span>'):'';
+    badge.style.display=r?'':'none';
+    if(r)badge.className='vbt-last'+(r.loss>=20?' vbt-drop20':'');
+  }
+  if(n)n.textContent=live.length?live.length+' rep'+(live.length>1?'s':''):'';
+  if(!body)return;
+  const best=live.length?Math.max(...live.map(x=>x.mcv)):0;
+  body.innerHTML=live.map((r,i)=>{
+    const loss=Math.round((1-r.mcv/best)*100);
+    return '<tr'+(loss>=20?' class="vbt-drop20"':'')+'><td>'+(i+1)+'</td><td class="vbt-num"><b>'+r.mcv.toFixed(2)+'</b></td><td class="vbt-num">'+r.pv.toFixed(2)+'</td><td class="vbt-num">'+r.rom+'</td><td class="vbt-num">'+(loss?'-'+loss+'%':'best')+'</td>'
+      +'<td style="text-align:right;"><button type="button" class="vbt-x" title="Not a rep — drop it" onclick="RX.vbt.dropRep('+i+')">×</button></td></tr>';
+  }).join('');
+  const acts=VB.el('vbt-setacts');
+  if(acts)acts.querySelectorAll('button').forEach(b=>{b.disabled=!live.length;});
+  const hint=VB.el('vbt-hint'); if(hint)hint.style.display=live.length?'none':'';
+};
+
+/* ═════ recording ═════ */
+VB.record=function(kind){
+  if(!VB.st.on){VB.setStatus('Start the camera first.','bad');return;}
+  VB.st.mode=kind;VB.st.samples=[];VB.st.dims=[];VB.st.last=null;VB.st.rise=false;
+  VB.setStatus(kind==='drop'
+    ?'Drop test running — hold the marker up, let it fall to the floor, then Stop.'
+    :'Recording.','ok');
+  VB.render();
+};
+VB.stopRec=function(){
+  const kind=VB.st.mode;
+  VB.st.mode='idle';
+  const s=VB.st.samples.slice();
+  if(kind==='drop'){
+    const d=VB.dropG(s,VB.cmPer());
+    // a failed attempt never wipes a good one
+    if(d){VB.st.drop=d;VB.st.drops=(VB.st.drops||[]).concat(d).slice(-5);}
+    VB.setStatus(d?('Drop test: measured gravity '+d.g+' m/s² over '+d.frames+' frames ('+d.fall+' cm of fall).'+(d.frames<20?' Short fall — drop it from higher, or run it twice more, and the scale tightens up.':'')):'No clean fall found — hold it higher and let it drop freely, then Stop.',d?(Math.abs(d.err)<=5?'ok':'bad'):'bad');
+  }else if(kind==='set'){
+    const L=VB.lift(VB.st.lift);
+    const reps=VB.reps(s,VB.st.minRom||L.minRom,VB.cmPer());
+    VB.st.last={reps,load:parseFloat(VB.st.load)||0,lift:VB.st.lift,t:Date.now()};
+    VB.setStatus(reps.length?(reps.length+' rep'+(reps.length>1?'s':'')+' found.'):'No reps found. Check the box follows the band, and that the rep clears the minimum height.',reps.length?'ok':'bad');
+  }
+  VB.render();
+};
+/* take the scale straight from the fall: no tape measure involved */
+VB.applyDrop=function(){
+  const d=VB.st.drop; if(!d||!d.cmPerPx)return;
+  // the median of the drops taken at this camera position: one short fall
+  // is noisy, three agree to well under a percent
+  const good=(VB.st.drops||[d]).filter(x=>x.frames>=12).map(x=>x.cmPerPx);
+  const use=good.length?VB.median(good):d.cmPerPx;
+  VB.st.calPx=use;VB.st.calSrc='gravity';VB.st.calN=good.length||1;VB.persist();
+  const med=VB.median(VB.st.dims||[]);
+  const impl=med?(d.cmPerPx*med).toFixed(1):null;
+  VB.setStatus('Scale now set by gravity ('+(VB.st.calN||1)+' drop'+((VB.st.calN||1)>1?'s':'')+')'+(impl?' — by this scale the band measures '+impl+' cm, against the '+VB.st.markerCm+' cm you entered':'')+'. Leave the phone where it is; move it and run the drop again.','ok');
+  VB.render();
+};
+VB.useBand=function(){VB.st.calPx=null;VB.st.calSrc='band';VB.persist();VB.setStatus('Back to the band width for scale.','ok');VB.render();};
+VB.saveSet=function(){
+  const reps=VB.st.live.slice(); if(!reps.length){VB.setStatus('No reps on screen yet.','bad');return;}
+  const inp=VB.el('vbt-load');
+  const load=parseFloat((inp&&inp.value)||VB.st.load)||0;
+  if(!load){VB.setStatus('Put the load in first — the profile is load against speed.','bad');return;}
+  const best=Math.max(...reps.map(r=>r.mcv));
+  VB.st.sets.push({lift:VB.st.lift,load,reps,best:+best.toFixed(3),n:reps.length,at:new Date().toISOString()});
+  VB.st.live=[];VB.st.liveT=0;
+  VB.setStatus('Set saved: '+load+' lb, '+reps.length+' reps, best '+best.toFixed(2)+' m/s. Change the load and go again.','ok');
+  VB.render();
+};
+VB.delSet=function(i){VB.st.sets.splice(i,1);VB.render();};
+
+/* ═════ save + apply ═════ */
+VB.athlete=function(){
+  const sel=VB.el('film-ath');
+  const id=VB.st.athId||(sel&&sel.value)||null;
+  return S.athletes.find(a=>a.id===id)||null;
+};
+VB.session=function(){
+  const L=VB.lift(VB.st.lift);
+  const sets=VB.st.sets.filter(s=>s.lift===VB.st.lift);
+  return {id:uid(),date:today(),lift:L.id,liftName:L.name,marker:VB.st.markerOn,markerCm:VB.st.markerCm,scale:VB.st.calSrc,
+    fps:Math.round(VB.st.fps||0),drop:VB.st.drop||null,sets,profile:VB.profile(sets,L.mvt)};
+};
+VB.saveToAthlete=function(){
+  const ath=VB.athlete();
+  if(!ath){VB.setStatus('Pick an athlete at the top of the Lab first.','bad');return null;}
+  const s=VB.session();
+  if(!s.sets.length){VB.setStatus('No saved sets for this lift yet.','bad');return null;}
+  if(!ath.vbt)ath.vbt={ver:VB.VER,sessions:[]};
+  ath.vbt.sessions=[s].concat(ath.vbt.sessions||[]).slice(0,20);
+  if(!S.sessions[ath.id])S.sessions[ath.id]=[];
+  S.sessions[ath.id].push({date:s.date,updates:{},
+    notes:'Velocity: '+s.liftName+' — '+s.sets.map(x=>x.load+' lb @ '+x.best.toFixed(2)+' m/s').join(', ')
+      +(s.profile&&s.profile.e1rm?'. Estimated 1RM '+s.profile.e1rm+' lb (R² '+s.profile.r2+').':'')});
+  save();
+  if(typeof toast==='function')toast('Saved to '+an(ath));
+  VB.setStatus('Saved to '+an(ath)+'.','ok');
+  VB.render();
+  return s;
+};
+VB.base=n=>RX.dd?RX.dd.base(n):norm(String(n||'').replace(/\([^)]*\)/g,' '));
+/* rewrite "280 lb (65%)" style loads from a new estimated 1RM, this week on */
+VB.applyToProgram=function(athId,liftName,e1rm,ask){
+  const p=S.programs[athId]; if(!p||!e1rm)return 0;
+  const from=Math.max(0,(p.currentWeek||1)-1);
+  const hits=[];
+  (p.weeks_data||[]).forEach((w,wi)=>{
+    if(wi<from)return;
+    (w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>(s.exercises||[]).forEach(ex=>{
+      if(VB.base(ex.name)!==VB.base(liftName))return;
+      const m=String(ex.weight||'').match(/(\d+(?:\.\d+)?)\s*%/);
+      if(!m)return;
+      const pct=+m[1], lb=Math.round(e1rm*pct/100/5)*5;
+      hits.push({ex,wk:w.week,pct,from:ex.weight,to:lb+' lb ('+pct+'%)'});
+    })));
+  });
+  if(!hits.length)return 0;
+  if(ask!==false&&typeof confirm==='function'&&!confirm('Rewrite '+hits.length+' load'+(hits.length>1?'s':'')+' for '+liftName+' from week '+(p.weeks_data[from].week)+' on, using '+e1rm+' lb as the max?\n\ne.g. '+hits[0].from+' → '+hits[0].to))return 0;
+  hits.forEach(h=>{h.ex.weight=h.to;});
+  p.edited=true;save();
+  if(typeof toast==='function')toast('Updated '+hits.length+' load'+(hits.length>1?'s':'')+' from the velocity profile');
+  return hits.length;
+};
+VB.applyClick=function(){
+  const ath=VB.athlete(); if(!ath){VB.setStatus('Pick an athlete first.','bad');return;}
+  const L=VB.lift(VB.st.lift), prof=VB.profile(VB.st.sets.filter(s=>s.lift===VB.st.lift),L.mvt);
+  if(!prof||!prof.e1rm){VB.setStatus('Need at least two loads with reps before the profile can set loads.','bad');return;}
+  const n=VB.applyToProgram(ath.id,L.name,prof.e1rm);
+  VB.setStatus(n?('Rewrote '+n+' load'+(n>1?'s':'')+' in '+an(ath)+'’s program.'):'Nothing to rewrite: no "% of 1RM" loads for '+L.name+' from this week on.',n?'ok':'bad');
+};
+
+/* ═════ profile chart (self-contained, no library) ═════ */
+VB.chart=function(cv,prof){
+  if(!cv||!prof||!prof.pts||prof.pts.length<2)return;
+  const w=cv.clientWidth||320, h=220, dpr=window.devicePixelRatio||1;
+  cv.width=w*dpr;cv.height=h*dpr;cv.style.height=h+'px';
+  const x=VB.ctx2d(cv); if(!x)return;                          // no canvas here (tests, print)
+  x.scale(dpr,dpr);
+  const cs=getComputedStyle(document.body);
+  const ink=cs.getPropertyValue('--text')||'#eee', mut=cs.getPropertyValue('--text3')||'#888', acc='#b8ff57';
+  const P=prof.pts, pad={l:46,r:14,t:14,b:34};
+  const xs=P.map(p=>p.x), ys=P.map(p=>p.y);
+  const x0=Math.min(...xs)*0.85, x1=prof.e1rm?Math.max(...xs,prof.e1rm)*1.02:Math.max(...xs)*1.1;
+  const y0=0, y1=Math.max(...ys, prof.icept||0)*1.1;
+  const X=v=>pad.l+(v-x0)/(x1-x0)*(w-pad.l-pad.r), Y=v=>h-pad.b-(v-y0)/(y1-y0)*(h-pad.t-pad.b);
+  x.clearRect(0,0,w,h);
+  x.strokeStyle='rgba(255,255,255,.08)';x.lineWidth=1;
+  [0,.25,.5,.75,1].forEach(f=>{const yy=pad.t+f*(h-pad.t-pad.b);x.beginPath();x.moveTo(pad.l,yy);x.lineTo(w-pad.r,yy);x.stroke();});
+  x.fillStyle=mut;x.font='500 9px ui-monospace,monospace';
+  x.fillText((y1).toFixed(2),6,pad.t+4);x.fillText('0.00',6,h-pad.b+4);
+  x.fillText(Math.round(x0)+' lb',pad.l-6,h-pad.b+16);
+  x.textAlign='right';x.fillText(Math.round(x1)+' lb',w-pad.r,h-pad.b+16);x.textAlign='left';
+  // fit line
+  x.strokeStyle=acc;x.lineWidth=2;x.beginPath();
+  x.moveTo(X(x0),Y(prof.slope*x0+prof.icept));x.lineTo(X(x1),Y(Math.max(0,prof.slope*x1+prof.icept)));x.stroke();
+  // minimum velocity threshold
+  x.strokeStyle='rgba(255,255,255,.25)';x.setLineDash([4,4]);x.beginPath();
+  x.moveTo(pad.l,Y(prof.mvt));x.lineTo(w-pad.r,Y(prof.mvt));x.stroke();x.setLineDash([]);
+  x.fillStyle=mut;x.fillText('min velocity '+prof.mvt+' m/s',pad.l+4,Y(prof.mvt)-4);
+  // points
+  P.forEach(p=>{
+    x.fillStyle=acc;x.beginPath();x.arc(X(p.x),Y(p.y),5,0,7);x.fill();
+    x.fillStyle=ink;x.font='600 10px system-ui';
+    x.fillText(p.y.toFixed(2),X(p.x)+8,Y(p.y)-6);
+  });
+  if(prof.e1rm){
+    x.fillStyle='#e13b31';x.beginPath();x.arc(X(prof.e1rm),Y(prof.mvt),4,0,7);x.fill();
+    x.fillStyle=ink;x.fillText(prof.e1rm+' lb',X(prof.e1rm)-40,Y(prof.mvt)+16);
+  }
+};
+
+/* ═════ UI ═════ */
+VB.CSS=`
+#vbt{display:none;}
+#pg-lab.lab-vel #vbt{display:block;}
+#pg-lab.lab-vel #pg-film{display:none !important;}   /* beats the Lab's own !important */
+#lab-tools{display:flex;gap:8px;margin:0 0 16px;flex-wrap:wrap;}
+#lab-tools button{appearance:none;background:transparent;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:9px 14px;font:600 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;min-height:38px;}
+#lab-tools button.on{border-color:var(--accent);color:var(--accent);background:rgba(184,255,87,.07);}
+#vbt .vbt-grid{display:grid;grid-template-columns:1fr;gap:16px;}
+@media (min-width:900px){#vbt .vbt-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start;}}
+#vbt .vbt-f{display:flex;flex-direction:column;gap:6px;min-width:0;}
+#vbt .vbt-f label{font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin:0;}
+#vbt .vbt-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:12px;}
+#vbt input,#vbt select{width:100%;font-size:14px !important;padding:9px 10px !important;}
+#vbt .vbt-stage{position:relative;background:#000;border:1px solid var(--border2);border-radius:10px;overflow:hidden;aspect-ratio:16/9;}
+#vbt video{width:100%;height:100%;object-fit:contain;display:block;background:#000;}
+#vbt canvas#vbt-ov{position:absolute;inset:0;width:100%;height:100%;}
+#vbt .vbt-live{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.55);border-radius:8px;padding:8px 10px;font:700 22px/1 var(--disp);color:#b8ff57;}
+#vbt .vbt-live span{display:block;font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#cfd3c9;margin-top:4px;}
+#vbt .vbt-last{position:absolute;right:10px;top:10px;background:rgba(0,0,0,.6);border:1px solid rgba(184,255,87,.35);border-radius:10px;padding:10px 12px;text-align:right;}
+#vbt .vbt-last b{display:block;font:700 34px/1 var(--disp);color:#b8ff57;}
+#vbt .vbt-last span{font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#cfd3c9;}
+#vbt .vbt-last.vbt-drop20{border-color:#e13b31;}
+#vbt .vbt-last.vbt-drop20 b{color:#ff8179;}
+#vbt tr.vbt-drop20 td{color:#ff8179;}
+#vbt .vbt-exit{display:none;}
+#vbt.vbt-big .vbt-stage{position:fixed;inset:0;z-index:9000;aspect-ratio:auto;border-radius:0;}
+#vbt.vbt-big .vbt-last{right:auto;left:0;right:0;top:auto;bottom:0;border:none;border-radius:0;background:rgba(0,0,0,.55);text-align:center;padding:16px;}
+#vbt.vbt-big .vbt-last b{font:700 clamp(64px,22vw,220px)/1 var(--disp);}
+#vbt.vbt-big .vbt-last span{font-size:14px;letter-spacing:.18em;}
+#vbt.vbt-big .vbt-live{font-size:30px;}
+#vbt.vbt-big .vbt-exit{display:block;position:absolute;top:12px;right:12px;z-index:2;appearance:none;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);color:#f4f1ec;border-radius:8px;padding:10px 14px;font:600 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;cursor:pointer;min-height:40px;}
+#vbt .vbt-x{appearance:none;background:transparent;border:none;color:var(--text3);font-size:15px;line-height:1;cursor:pointer;padding:4px 6px;min-height:30px;min-width:30px;}
+#vbt .vbt-x:hover{color:#e13b31;}
+#vbt button[disabled]{opacity:.4;cursor:default;}
+#vbt .vbt-livehd{display:flex;justify-content:space-between;align-items:baseline;font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:4px 0 6px;}
+#vbt .vbt-voice{display:inline-flex;align-items:center;gap:8px;font:400 11px var(--disp);color:var(--text2);cursor:pointer;min-height:38px;}
+#vbt .vbt-voice input{width:18px;height:18px;accent-color:var(--accent);}
+#vbt .vbt-acts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+#vbt .vbt-status{font:400 11px/1.6 var(--disp);color:var(--text2);border-left:2px solid var(--border2);padding-left:10px;margin:10px 0;}
+#vbt .vbt-status.vbt-ok{border-color:var(--accent);}
+#vbt .vbt-status.vbt-bad{border-color:#e13b31;color:#ffb4ae;}
+#vbt table{width:100%;border-collapse:collapse;font-size:11px;}
+#vbt th{font:500 8px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);text-align:left;padding:6px 4px;border-bottom:1px solid var(--border2);}
+#vbt td{padding:7px 4px;border-bottom:1px solid var(--border);color:var(--text2);}
+#vbt td b{color:var(--text);font-weight:600;}
+#vbt .vbt-num{font-family:var(--mono);}
+#vbt .vbt-drop{border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-top:12px;}
+#vbt .vbt-drop b{font-size:20px;font-family:var(--mono);}
+#vbt .vbt-note{font:400 10px/1.6 var(--disp);color:var(--text3);margin-top:10px;}
+#vbt-prof .vbt-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin:12px 0;}
+#vbt-prof .vbt-kpi div{border:1px solid var(--border2);border-radius:8px;padding:10px;}
+#vbt-prof .vbt-kpi b{display:block;font:700 20px/1.2 var(--disp);color:var(--text);}
+#vbt-prof .vbt-kpi span{font:500 8px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);}
+`;
+VB.mount=function(){
+  const pg=document.getElementById('pg-lab'), film=document.getElementById('pg-film');
+  if(!pg||!film)return false;
+  if(!document.getElementById('vbt-css')){const s=document.createElement('style');s.id='vbt-css';s.textContent=VB.CSS;(document.head||document.documentElement).appendChild(s);}
+  let tools=document.getElementById('lab-tools');
+  if(!tools){
+    tools=document.createElement('div');tools.id='lab-tools';
+    tools.innerHTML='<button type="button" data-tool="screen" class="on">Movement screen</button><button type="button" data-tool="velocity">Velocity</button>';
+    film.parentElement.insertBefore(tools,film);
+    tools.querySelectorAll('button').forEach(b=>b.onclick=()=>VB.tool(b.dataset.tool));
+  }
+  let wrap=document.getElementById('vbt');
+  if(!wrap){
+    wrap=document.createElement('div');wrap.id='vbt';
+    film.parentElement.insertBefore(wrap,film.nextSibling);
+    VB.render();
+  }
+  return true;
+};
+VB.tool=function(which){
+  const pg=document.getElementById('pg-lab'), wrap=document.getElementById('vbt'), tools=document.getElementById('lab-tools');
+  if(!pg||!wrap)return;
+  const on=which==='velocity';
+  pg.classList.toggle('lab-vel',on);
+  if(tools)tools.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.tool===which));
+  if(!on)VB.stop(true);else VB.render();
+};
+VB.set=function(k,v){
+  if(k==='markerCm'||k==='minRom')v=parseFloat(v)||VB.st[k];
+  VB.st[k]=v;
+  if(k==='markerOn'||k==='markerCm')VB.st.dims=[];
+  if(k==='lift'){const L=VB.lift(v);VB.st.minRom=L.minRom;}
+  VB.persist();VB.render();
+};
+VB.live=function(){
+  const el=VB.el('vbt-live'); if(!el)return;
+  const v=VB.st.vNow||0;
+  const c=VB.st.cmPerNow;
+  el.innerHTML=(VB.st.blob&&c&&VB.st.vNow!=null?Math.abs(v).toFixed(2):'--')+'<span>m/s '+(VB.st.fps?'· '+Math.round(VB.st.fps)+' fps':'')+(c?' · '+(1/c).toFixed(1)+' px/cm ('+VB.st.calSrc+')':'')+'</span>';
+};
+VB.render=function(){
+  const wrap=document.getElementById('vbt'); if(!wrap)return;
+  const st=VB.st, L=VB.lift(st.lift);
+  const sets=st.sets.filter(s=>s.lift===st.lift);
+  const prof=VB.profile(sets,L.mvt);
+  const ath=VB.athlete();
+  const rec=st.mode!=='idle';
+  const opt=(list,val)=>list.map(o=>'<option value="'+esc(o[0])+'"'+(String(o[0])===String(val)?' selected':'')+'>'+esc(o[1])+'</option>').join('');
+  const best15=st.live.length?Math.max(...st.live.map(x=>x.mcv)):0;
+  const repRows=st.live.map((r,i)=>{
+    const loss=Math.round((1-r.mcv/best15)*100);
+    return '<tr'+(loss>=20?' class="vbt-drop20"':'')+'><td>'+(i+1)+'</td><td class="vbt-num"><b>'+r.mcv.toFixed(2)+'</b></td><td class="vbt-num">'+r.pv.toFixed(2)+'</td><td class="vbt-num">'+r.rom+'</td><td class="vbt-num">'+(loss?'-'+loss+'%':'best')+'</td>'
+      +'<td style="text-align:right;"><button type="button" class="vbt-x" title="Not a rep — drop it" onclick="RX.vbt.dropRep('+i+')">×</button></td></tr>';
+  }).join('');
+  const setRows=sets.map((s,i)=>'<tr><td class="vbt-num"><b>'+s.load+' lb</b></td><td class="vbt-num">'+s.best.toFixed(2)+'</td><td class="vbt-num">'+s.n+'</td>'
+    +'<td style="text-align:right;"><button class="btn btn-sm" onclick="RX.vbt.delSet('+i+')">Remove</button></td></tr>').join('');
+  const d=st.drop;
+  wrap.innerHTML=
+    '<div class="vbt-grid">'
+    +'<div class="card">'
+      +'<div class="card-title"><span>Camera</span></div>'
+      +'<div class="vbt-row">'
+        +'<div class="vbt-f"><label for="vbt-lift">Lift</label><select id="vbt-lift" onchange="RX.vbt.set(\'lift\',this.value)">'+opt(VB.LIFTS.map(l=>[l.id,l.name]),st.lift)+'</select></div>'
+        +'<div class="vbt-f"><label for="vbt-cam">Camera</label><select id="vbt-cam" onchange="RX.vbt.start()"><option value="auto">Auto ('+(st.facing==='environment'?'back':'front')+')</option></select></div>'
+        +'<div class="vbt-f"><label for="vbt-marker">Band width (cm)</label><input id="vbt-marker" type="number" step="0.1" value="'+st.markerCm+'" onchange="RX.vbt.set(\'markerCm\',this.value)"></div>'
+        +'<div class="vbt-f"><label for="vbt-on">Band is on</label><select id="vbt-on" onchange="RX.vbt.set(\'markerOn\',this.value)">'+opt([['bar','The bar'],['hips','The hips']],st.markerOn)+'</select></div>'
+      +'</div>'
+      +'<div class="vbt-stage"><video id="vbt-video" playsinline muted></video><canvas id="vbt-ov"></canvas>'
+        +'<div class="vbt-live" id="vbt-live">--<span>m/s</span></div>'
+        +'<div class="vbt-last" id="vbt-last" style="display:none;"></div>'
+        +'<button type="button" class="vbt-exit" onclick="RX.vbt.big(false)">Exit big screen</button></div>'
+      +'<div class="vbt-acts">'
+        +(st.on?'<button class="btn btn-sm" onclick="RX.vbt.stop()">Stop camera</button><button class="btn btn-sm" onclick="RX.vbt.flip()">Flip camera</button><button class="btn btn-sm" onclick="RX.vbt.big(true)">Big screen</button>':'<button class="btn btn-primary btn-sm" onclick="RX.vbt.start()">Start camera</button>')
+        +(rec?'<button class="btn btn-primary btn-sm" onclick="RX.vbt.stopRec()">Stop drop test</button>'
+             :'<button class="btn btn-sm" onclick="RX.vbt.record(\'drop\')">Drop test</button><button class="btn btn-sm" onclick="RX.vbt.newSet()">New set</button>')
+        +'<label class="vbt-voice"><input type="checkbox"'+(st.voice?' checked':'')+' onchange="RX.vbt.voice(this.checked)"> Call the numbers out</label>'
+      +'</div>'
+      +'<div class="vbt-status" id="vbt-status">'+(st.on?'Camera on.':'Band on the bar sleeve, phone side-on and level, 2–3 m away, whole lift in frame. Start the camera, then tap the band in the picture.')+'</div>'
+      +'<div class="vbt-drop"><div style="font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Accuracy check — measured gravity</div>'
+        +(d?'<div style="margin-top:6px;"><b style="color:'+(Math.abs(d.err)<=5?'var(--accent)':'#e13b31')+';">'+d.g+' m/s²</b> vs 9.81 · '+(d.err>0?'+':'')+d.err+'%'
+            +'<div class="vbt-note">'+(Math.abs(d.err)<=5?'Within 5% — the scale and the frame timing both check out, so the speeds can be trusted.':'Off by more than 5%: every distance is off by the same amount. Apply the correction, or re-measure the band and check the phone is square to the bar.')+'</div>'
+            +'<button class="btn btn-sm" style="margin-top:8px;" onclick="RX.vbt.applyDrop()">Use gravity for the scale</button>'
+            +(st.calSrc==='gravity'?' <button class="btn btn-sm" style="margin-top:8px;" onclick="RX.vbt.useBand()">Back to band width</button>':'')+'</div>'
+          :'<div class="vbt-note">Drop the marker from about waist height and let it land. Gravity is 9.81 m/s² everywhere, so if the app reads that back, the ruler and the timing are both right. Do it once per setup.</div>')
+        +'<div class="vbt-note">Scale in use: '+(st.calSrc==='gravity'?'set by gravity from '+(st.calN||1)+' drop'+((st.calN||1)>1?'s':'')+' (no tape measure)':'the band width you entered')+'. Three drops beat one.</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="card">'
+      +'<div class="card-title"><span>Set</span></div>'
+      +'<div class="vbt-row">'
+        +'<div class="vbt-f"><label for="vbt-load">Load on the bar (lb)</label><input id="vbt-load" type="number" inputmode="numeric" value="'+esc(st.load||'')+'" onchange="RX.vbt.set(\'load\',this.value)"></div>'
+        +'<div class="vbt-f"><label for="vbt-rom">Min rep height (cm)</label><input id="vbt-rom" type="number" value="'+(st.minRom||L.minRom)+'" onchange="RX.vbt.set(\'minRom\',this.value)"></div>'
+      +'</div>'
+      +'<div class="vbt-livehd"><span>Reps — live</span><span id="vbt-count"></span></div>'
+      +'<table><thead><tr><th>Rep</th><th>Mean m/s</th><th>Peak</th><th>Range cm</th><th>Loss</th><th></th></tr></thead><tbody id="vbt-reps">'+repRows+'</tbody></table>'
+      +'<div class="vbt-acts" id="vbt-setacts"><button class="btn btn-primary btn-sm"'+(st.live.length?'':' disabled')+' onclick="RX.vbt.saveSet()">Save set</button>'
+      +'<button class="btn btn-sm"'+(st.live.length?'':' disabled')+' onclick="RX.vbt.newSet()">Clear</button></div>'
+      +'<div class="vbt-note" id="vbt-hint"'+(st.live.length?' style="display:none;"':'')+'>Lift and the reps land here as they happen — no start, no stop. Tap × on anything that was not a rep, and save the set when the load changes.</div>'
+      +(setRows?'<div style="margin-top:16px;"><div style="font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">'+esc(L.name)+' — sets today</div>'
+        +'<table><thead><tr><th>Load</th><th>Best m/s</th><th>Reps</th><th></th></tr></thead><tbody>'+setRows+'</tbody></table></div>':'')
+      +'<div id="vbt-prof">'+VB.profHtml(prof,L,ath)+'</div>'
+    +'</div>'
+    +'</div>';
+  const v=VB.el('vbt-video');
+  if(v&&VB.st.stream&&v.srcObject!==VB.st.stream){v.srcObject=VB.st.stream;v.muted=true;v.setAttribute('playsinline','');v.play().catch(()=>{});}
+  if(VB.st.on)VB.loop();
+  const ov=VB.el('vbt-ov'); if(ov)ov.onclick=VB.sample;
+  if(prof&&prof.e1rm)VB.chart(VB.el('vbt-chart'),prof);
+};
+VB.profHtml=function(prof,L,ath){
+  if(!prof)return '<div class="vbt-note" style="margin-top:16px;">Two loads or more (say 50%, 70%, 85%) and the load–speed line appears here with an estimated max.</div>';
+  if(prof.bad)return '<div class="vbt-status vbt-bad" style="margin-top:16px;">'+esc(prof.bad)+'</div>';
+  return '<div style="margin-top:18px;border-top:1px solid var(--border2);padding-top:14px;">'
+    +'<div style="font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Load–speed profile · '+esc(L.name)+'</div>'
+    +'<div class="vbt-kpi">'
+      +'<div><b>'+prof.e1rm+' lb</b><span>Est. 1RM at '+prof.mvt+' m/s</span></div>'
+      +'<div><b>'+prof.v0+'</b><span>m/s at no load</span></div>'
+      +'<div><b>'+prof.r2+'</b><span>R² ('+prof.n+' loads)</span></div>'
+    +'</div>'
+    +'<canvas id="vbt-chart" style="width:100%;height:220px;"></canvas>'
+    +'<div class="vbt-acts">'
+      +'<button class="btn btn-sm" onclick="RX.vbt.saveToAthlete()">Save to '+(ath?esc(ath.first):'athlete')+'</button>'
+      +'<button class="btn btn-sm" onclick="RX.vbt.applyClick()">Set % loads in the program</button>'
+    +'</div>'
+    +'<div class="vbt-note">'+(prof.r2<0.9?'R² below 0.90 — the line is loose. Add a load or redo the outlier before trusting the max. ':'')
+      +'Estimated from '+prof.range[0]+'–'+prof.range[1]+' lb; loads far outside that range are extrapolation. Browser frame rate is '+Math.round(VB.st.fps||0)+' fps, so mean speed is reliable and peak speed is rough.</div>'
+    +'</div>';
+};
+
+/* profile card on the athlete */
+VB.profileRow=function(ath){
+  const s=(ath.vbt&&ath.vbt.sessions||[])[0];
+  if(!s)return '';
+  const p=s.profile;
+  return '<div class="lab-row"><div class="lab-k">Velocity</div><div class="lab-g">'+(p&&p.e1rm?p.e1rm:(s.sets[0]?s.sets[0].best.toFixed(2):'—'))+'</div>'
+    +'<div class="lab-d"><b>'+esc(s.liftName)+'</b> · '+esc(s.date)+(p&&p.e1rm?' · est. 1RM lb (R² '+p.r2+')':'')
+    +'<br>'+s.sets.map(x=>esc(x.load+' lb @ '+x.best.toFixed(2)+' m/s')).join(' · ')
+    +(s.drop?'<br>Drop test '+s.drop.g+' m/s²':'')+'</div></div>';
+};
+if(RX.lab&&typeof RX.lab.profileHtml==='function'){
+  const _ph=RX.lab.profileHtml;
+  RX.lab.profileHtml=function(ath){
+    let h=_ph.apply(this,arguments);
+    try{h+=VB.profileRow(ath);}catch(e){}
+    return h;
+  };
+}
+/* mount alongside the Lab */
+if(RX.lab&&typeof RX.lab.mount==='function'){
+  const _m=RX.lab.mount;
+  RX.lab.mount=function(){const r=_m.apply(this,arguments);try{if(r)VB.mount();}catch(e){console.warn('[RX] vbt mount',e);}return r;};
+}
+setTimeout(()=>{try{VB.mount();}catch(e){}},1200);
+})();
+/* ═══════════════ SECTION 28 — DEVICE MERGE (iPad, phone, cloud) ══════════
+   The bug behind "she's on the iPad but not the phone": sync moved the whole
+   state as one blob. A pull REPLACED the local copy, a push REPLACED the
+   cloud copy, and every save auto-pushed — so whichever device saved last
+   decided what everyone had, and an athlete added on one device disappeared
+   the moment the other device saved.
+
+   This layer replaces blob-wins with a merge:
+   1. STAMPS — every save marks which records actually changed (hash per
+      record against a shadow copy), so a merge can tell "newer" from "older"
+      instead of guessing.
+   2. MERGE — records are matched by id and unioned. A record only one side
+      has is KEPT, never dropped. A record both sides have goes to the newer
+      stamp; with no stamps (data written before this layer), the fuller
+      record wins, which is the safe direction.
+   3. TOMBSTONES — a real delete is recorded, so deleting on one device
+      still deletes everywhere instead of coming back on the next merge.
+   4. PULL = merge + push back, so the cloud ends up holding the union and
+      both devices converge. Auto-push merges first, so a device can never
+      overwrite what it has not seen.
+   5. NO CLOUD? Settings → Devices → Merge from file: export a backup on one
+      device, open it on the other, and it merges in rather than replacing.
+   Lists inside records (sessions, readiness logs) are unioned entry by
+   entry, so two devices that both logged that week keep both logs. */
+(function(){
+const SY={};
+RX.sync=SY;
+SY.V=1;
+SY.KINDS=[
+  {k:'athletes',shape:'array'},
+  {k:'programs',shape:'map'},
+  {k:'sessions',shape:'map',list:true},
+  {k:'readiness',shape:'map',list:true},
+  {k:'filmAnalyses',shape:'array'},
+  {k:'groups',shape:'array'},
+  {k:'templates',shape:'array'}
+];
+SY.kind=k=>SY.KINDS.find(x=>x.k===k);
+
+/* ---- stamps ---- */
+SY.meta=function(st){
+  st=st||S;
+  if(!st.meta||typeof st.meta!=='object')st.meta={v:SY.V,ts:{},del:{}};
+  if(!st.meta.ts)st.meta.ts={};
+  if(!st.meta.del)st.meta.del={};
+  return st.meta;
+};
+SY.hash=function(o){
+  const s=JSON.stringify(o)||'';
+  let h=2166136261;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
+  return (h>>>0).toString(36)+':'+s.length;
+};
+SY.records=function(st,kind){
+  const v=st[kind.k];
+  if(kind.shape==='array')return Array.isArray(v)?v.filter(x=>x&&x.id).map(x=>[x.id,x]):[];
+  return v&&typeof v==='object'?Object.keys(v).map(id=>[id,v[id]]):[];
+};
+SY.shadow={};
+/* mark what changed since the last save; the first pass only learns the
+   current shape (nothing is "changed" just because the app started) */
+SY.stamp=function(){
+  const meta=SY.meta(), now=Date.now();
+  let first=!SY._learned, n=0;
+  SY.KINDS.forEach(kind=>{
+    const sh=SY.shadow[kind.k]||(SY.shadow[kind.k]={});
+    const seen={};
+    SY.records(S,kind).forEach(([id,rec])=>{
+      seen[id]=1;
+      const h=SY.hash(rec);
+      // a record that exists again after a delete is a deliberate re-add:
+      // its tombstone has to go, or the merge would keep killing it
+      if(meta.del[kind.k]&&meta.del[kind.k][id]){delete meta.del[kind.k][id];if(!meta.ts[kind.k])meta.ts[kind.k]={};meta.ts[kind.k][id]=now;}
+      if(sh[id]!==h){
+        sh[id]=h;
+        if(!first){
+          if(!meta.ts[kind.k])meta.ts[kind.k]={};
+          meta.ts[kind.k][id]=now;n++;
+        }
+      }
+    });
+    Object.keys(sh).forEach(id=>{if(!seen[id])delete sh[id];});
+  });
+  SY._learned=true;
+  return n;
+};
+SY.tombstone=function(kindKey,id){
+  const meta=SY.meta();
+  if(!meta.del[kindKey])meta.del[kindKey]={};
+  meta.del[kindKey][id]=Date.now();
+  if(meta.ts[kindKey])delete meta.ts[kindKey][id];
+};
+SY.tsOf=(st,kindKey,id)=>((SY.meta(st).ts||{})[kindKey]||{})[id]||0;
+SY.delOf=(st,kindKey,id)=>((SY.meta(st).del||{})[kindKey]||{})[id]||0;
+
+/* ---- merge ---- */
+SY.mergeList=function(a,b){
+  const out=[], seen={};
+  (a||[]).concat(b||[]).forEach(x=>{
+    const k=SY.hash(x);
+    if(seen[k])return;
+    seen[k]=1;out.push(x);
+  });
+  out.sort((x,y)=>String((x&&x.date)||'').localeCompare(String((y&&y.date)||'')));
+  return out;
+};
+/* local + remote -> merged state, plus a report of what moved */
+SY.merge=function(local,remote){
+  const rep={added:[],updated:[],kept:[],removed:[],byKind:{}};
+  if(!remote||typeof remote!=='object')return {state:local,rep};
+  const out=local;
+  const meta=SY.meta(out), rmeta=SY.meta(remote);
+  SY.KINDS.forEach(kind=>{
+    const K=kind.k;
+    if(remote[K]===undefined&&local[K]===undefined)return;
+    const L={},R={};
+    SY.records(local,kind).forEach(([id,r])=>L[id]=r);
+    SY.records(remote,kind).forEach(([id,r])=>R[id]=r);
+    const ids=[...new Set(Object.keys(L).concat(Object.keys(R)))];
+    const merged={};
+    const k={added:0,updated:0,removed:0};
+    ids.forEach(id=>{
+      const l=L[id], r=R[id];
+      const lts=SY.tsOf(local,K,id), rts=SY.tsOf(remote,K,id);
+      const ldel=SY.delOf(local,K,id), rdel=SY.delOf(remote,K,id);
+      const del=Math.max(ldel,rdel);
+      if(del&&del>=Math.max(lts,rts)){                 // a real delete wins
+        if(l){k.removed++;rep.removed.push(K+':'+id);}
+        if(!meta.del[K])meta.del[K]={};
+        meta.del[K][id]=del;
+        return;
+      }
+      if(l&&!r){merged[id]=l;return;}
+      if(r&&!l){merged[id]=r;k.added++;rep.added.push({kind:K,id,rec:r});
+        if(rts){if(!meta.ts[K])meta.ts[K]={};meta.ts[K][id]=rts;}
+        return;}
+      if(kind.list){                                    // logs: keep both sides
+        const m=SY.mergeList(l,r);
+        merged[id]=m;
+        if(m.length!==(l||[]).length){k.updated++;rep.updated.push({kind:K,id});}
+        if(rts>lts){if(!meta.ts[K])meta.ts[K]={};meta.ts[K][id]=rts;}
+        return;
+      }
+      if(SY.hash(l)===SY.hash(r)){merged[id]=l;return;}
+      let win;
+      if(lts||rts)win=rts>lts?r:l;                      // stamps decide
+      else win=(JSON.stringify(r)||'').length>(JSON.stringify(l)||'').length?r:l;  // else the fuller record
+      merged[id]=win;
+      if(win===r){k.updated++;rep.updated.push({kind:K,id});
+        if(rts){if(!meta.ts[K])meta.ts[K]={};meta.ts[K][id]=rts;}}
+    });
+    if(kind.shape==='array'){
+      const order=[];
+      (local[K]||[]).forEach(x=>{if(x&&x.id&&merged[x.id]){order.push(merged[x.id]);delete merged[x.id];}});
+      (remote[K]||[]).forEach(x=>{if(x&&x.id&&merged[x.id]){order.push(merged[x.id]);delete merged[x.id];}});
+      out[K]=order;
+    }else out[K]=merged;
+    rep.byKind[K]=k;
+  });
+  try{SY.dedupe(out,rep);}catch(e){console.warn('[RX] dedupe',e);}
+  // tombstones from the other side, so they travel on
+  Object.keys(rmeta.del||{}).forEach(K=>{
+    if(!meta.del[K])meta.del[K]={};
+    Object.entries(rmeta.del[K]).forEach(([id,ts])=>{if(!(meta.del[K][id]>=ts))meta.del[K][id]=ts;});
+  });
+  return {state:out,rep};
+};
+/* Two devices that each ran the roster setup gave the same people different
+   ids, so a plain union shows everyone twice. Match those by name and fold
+   them into ONE record. The keeper is the lexicographically smaller id, so
+   every device picks the same winner without talking to the others. */
+SY.nameKey=a=>norm((a&&a.first||'')+' '+(a&&a.last||'')).replace(/[^a-z0-9]/g,'');
+SY.dedupe=function(st,rep){
+  st=st||S;
+  const by={};
+  (st.athletes||[]).forEach(a=>{
+    if(!a||!a.id)return;
+    const k=SY.nameKey(a); if(!k)return;
+    (by[k]=by[k]||[]).push(a);
+  });
+  const merged=[];
+  Object.values(by).forEach(list=>{
+    if(list.length<2)return;
+    const keep=list.slice().sort((x,y)=>String(x.id).localeCompare(String(y.id)))[0];
+    list.filter(a=>a!==keep).forEach(dup=>{
+      // the fuller athlete record wins field by field
+      Object.keys(dup).forEach(f=>{
+        if(f==='id')return;
+        const dv=dup[f], kv=keep[f];
+        if(dv==null||dv==='')return;
+        if(kv==null||kv==='')keep[f]=dv;
+        else if(f==='vald'&&kv&&typeof kv==='object')keep.vald=Object.assign({},dv,kv);
+      });
+      const move=(mapKey,list_)=>{
+        const m=st[mapKey]; if(!m||!m[dup.id])return;
+        if(!m[keep.id])m[keep.id]=m[dup.id];
+        else if(list_)m[keep.id]=SY.mergeList(m[keep.id],m[dup.id]);
+        else if((JSON.stringify(m[dup.id])||'').length>(JSON.stringify(m[keep.id])||'').length)m[keep.id]=m[dup.id];
+        delete m[dup.id];
+      };
+      move('programs',false);move('sessions',true);move('readiness',true);
+      (st.groups||[]).forEach(g=>{
+        if(!g||!Array.isArray(g.athIds))return;
+        g.athIds=[...new Set(g.athIds.map(id=>id===dup.id?keep.id:id))];
+      });
+      (st.filmAnalyses||[]).forEach(f=>{if(f&&f.athId===dup.id)f.athId=keep.id;});
+      if(st.selAth===dup.id)st.selAth=keep.id;
+      st.athletes=st.athletes.filter(a=>a!==dup);
+      SY.tombstone('athletes',dup.id);SY.tombstone('programs',dup.id);SY.tombstone('sessions',dup.id);
+      merged.push({name:((keep.first||'')+' '+(keep.last||'')).trim(),kept:keep.id,dropped:dup.id});
+    });
+  });
+  if(rep&&merged.length)rep.deduped=merged;
+  return merged;
+};
+SY.count=r=>r.added.length+r.updated.length+r.removed.length;
+SY.describe=function(rep){
+  const nm=x=>{
+    if(x.kind==='athletes'&&x.rec)return (x.rec.first||'')+' '+(x.rec.last||'');
+    if(x.kind==='programs')return 'program';
+    return x.kind;
+  };
+  const people=rep.added.filter(a=>a.kind==='athletes').map(nm).filter(Boolean);
+  const bits=[];
+  if(people.length)bits.push('added '+people.join(', '));
+  const other=rep.added.length-people.length;
+  if(other)bits.push(other+' other record'+(other>1?'s':''));
+  if(rep.updated.length)bits.push(rep.updated.length+' updated');
+  if(rep.removed.length)bits.push(rep.removed.length+' deleted elsewhere');
+  if(rep.deduped&&rep.deduped.length)bits.push('folded '+rep.deduped.length+' duplicate'+(rep.deduped.length>1?'s':'')+' ('+rep.deduped.map(d=>d.name).join(', ')+')');
+  return bits.length?bits.join(' · '):'already in step';
+};
+
+/* ---- cloud: pull = merge + push back ---- */
+SY.on=()=>typeof syncOn==='function'&&syncOn();
+SY.pullMerge=async function(show){
+  if(!SY.on()){if(show)SY.msg('Cloud sync is not set up on this device.','bad');return null;}
+  let r=null;
+  try{r=await fetchRemote();}catch(e){r=null;}
+  if(r===null){if(show)SY.msg('Cannot reach the cloud right now.','bad');return null;}
+  SY.stamp();
+  const {rep}=SY.merge(S,r);
+  SY.stamp();
+  if(typeof _saveLocal==='function')_saveLocal();
+  try{await pushState(false);}catch(e){}
+  SY.last={at:Date.now(),rep};
+  if(show){
+    SY.msg('Merged with the cloud: '+SY.describe(rep)+'.',SY.count(rep)?'ok':'');
+    if(typeof toast==='function')toast('Merged: '+SY.describe(rep));
+    try{if(pageInits[S.page])pageInits[S.page]();}catch(e){}
+  }
+  SY.paint();
+  return rep;
+};
+/* every auto-push merges first: a device can never overwrite what it has
+   not seen (this is what wiped athletes before) */
+SY.safePush=async function(){
+  if(!SY.on())return;
+  let r=null;
+  try{r=await fetchRemote();}catch(e){r=null;}
+  SY.stamp();
+  if(r&&typeof r==='object'){SY.merge(S,r);SY.stamp();if(typeof _saveLocal==='function')_saveLocal();}
+  try{await pushState(false);}catch(e){}
+};
+SY.install=function(){
+  if(SY._installed)return; SY._installed=true;
+  if(typeof window._saveLocal==='function'){
+    const _sl=window._saveLocal;
+    window._saveLocal=function(){try{SY.stamp();}catch(e){}return _sl.apply(this,arguments);};
+  }
+  if(typeof window.applyRemote==='function'){
+    const _ar=window.applyRemote;
+    window.applyRemote=function(r){
+      try{
+        SY.stamp();
+        const {rep}=SY.merge(S,r);
+        SY.stamp();
+        SY.last={at:Date.now(),rep};
+        if(typeof _saveLocal==='function')_saveLocal();
+        SY.paint();
+        return 0;
+      }catch(e){console.warn('[RX] merge failed, falling back',e);return _ar.apply(this,arguments);}
+    };
+  }
+  if(typeof window.autoPush==='function'){
+    window.autoPush=function(){clearTimeout(SY._q);SY._q=setTimeout(()=>{SY.safePush();},2500);};
+  }
+  // deletes leave a tombstone, so they do not come back on the next merge
+  ['quickDelAth','confirmDelAth'].forEach(fn=>{
+    if(typeof window[fn]!=='function')return;
+    const _f=window[fn];
+    window[fn]=function(){
+      const before=(S.athletes||[]).map(a=>a.id);
+      const r=_f.apply(this,arguments);
+      (before||[]).forEach(id=>{if(!(S.athletes||[]).some(a=>a.id===id)){SY.tombstone('athletes',id);SY.tombstone('programs',id);SY.tombstone('sessions',id);}});
+      if(typeof _saveLocal==='function')_saveLocal();
+      return r;
+    };
+  });
+  if(typeof window.delProgram==='function'){
+    const _dp=window.delProgram;
+    window.delProgram=function(id){
+      const had=!!S.programs[id];
+      const r=_dp.apply(this,arguments);
+      if(had&&!S.programs[id]){SY.tombstone('programs',id);if(typeof _saveLocal==='function')_saveLocal();}
+      return r;
+    };
+  }
+  if(RX.grp&&typeof RX.grp.remove==='function'){
+    const _gr=RX.grp.remove;
+    RX.grp.remove=function(id){const r=_gr.apply(this,arguments);SY.tombstone('groups',id);if(typeof _saveLocal==='function')_saveLocal();return r;};
+  }
+};
+
+/* ---- merge from a backup file (no cloud needed) ---- */
+SY.mergeFile=function(ev){
+  const f=ev&&ev.target&&ev.target.files&&ev.target.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    let data=null;
+    try{data=JSON.parse(e.target.result);}catch(err){SY.msg('That file is not a Coach OS backup.','bad');return;}
+    if(!data||!data.athletes){SY.msg('No athletes in that file — is it a backup from the other device?','bad');return;}
+    SY.stamp();
+    const {rep}=SY.merge(S,data);
+    SY.stamp();
+    if(typeof _saveLocal==='function')_saveLocal();
+    if(SY.on())SY.safePush();
+    SY.last={at:Date.now(),rep};
+    SY.msg('Merged from file: '+SY.describe(rep)+'. Nothing on this device was replaced.','ok');
+    if(typeof toast==='function')toast('Merged: '+SY.describe(rep));
+    try{if(pageInits[S.page])pageInits[S.page]();}catch(e2){}
+    SY.paint();
+  };
+  rd.readAsText(f);
+  ev.target.value='';
+};
+
+SY.cleanDupes=function(){
+  SY.stamp();
+  const d=SY.dedupe(S,null);
+  SY.stamp();
+  if(typeof _saveLocal==='function')_saveLocal();
+  if(SY.on())SY.safePush();
+  SY.msg(d.length?('Folded '+d.length+' duplicate'+(d.length>1?'s':'')+' into one record each: '+d.map(x=>x.name).join(', ')+'. Their programs and logs were kept.'):'No duplicate names on this device.',d.length?'ok':'');
+  try{if(pageInits[S.page])pageInits[S.page]();}catch(e){}
+  SY.paint();
+  return d;
+};
+
+/* ---- what is here vs what is in the cloud ---- */
+SY.diff=async function(){
+  if(!SY.on()){SY.msg('Cloud sync is not set up on this device, so there is nothing to compare. Use Merge from file, or connect this device to the same Worker URL and team code as the other one.','bad');return null;}
+  SY.msg('Checking the cloud…');
+  let r=null;
+  try{r=await fetchRemote();}catch(e){r=null;}
+  if(!r){SY.msg('Cannot reach the cloud right now.','bad');return null;}
+  const here=(S.athletes||[]).map(a=>({id:a.id,n:an(a)}));
+  const cloud=(r.athletes||[]).map(a=>({id:a.id,n:(a.first||'')+' '+(a.last||'')}));
+  const onlyHere=here.filter(a=>!cloud.some(c=>c.id===a.id));
+  const onlyCloud=cloud.filter(c=>!here.some(a=>a.id===c.id));
+  const out=[];
+  out.push(here.length+' athlete'+(here.length===1?'':'s')+' on this device · '+cloud.length+' in the cloud');
+  if(onlyHere.length)out.push('Only here: '+onlyHere.map(a=>a.n).join(', '));
+  if(onlyCloud.length)out.push('Only in the cloud: '+onlyCloud.map(a=>a.n).join(', '));
+  if(!onlyHere.length&&!onlyCloud.length)out.push('Both sides hold the same roster.');
+  SY.msg(out.join(' — '),onlyHere.length||onlyCloud.length?'bad':'ok');
+  return {onlyHere,onlyCloud};
+};
+
+/* ---- UI: Settings → Devices ---- */
+SY.msg=function(t,tone){
+  const e=document.getElementById('sy-msg'); if(!e)return;
+  e.textContent=t||'';
+  e.style.color=tone==='bad'?'var(--orange)':tone==='ok'?'var(--accent)':'var(--text2)';
+};
+SY.paint=function(){
+  const e=document.getElementById('sy-state'); if(!e)return;
+  const n=(S.athletes||[]).length, p=Object.keys(S.programs||{}).length;
+  const l=SY.last;
+  e.innerHTML='<b>'+n+'</b> athlete'+(n===1?'':'s')+' · <b>'+p+'</b> program'+(p===1?'':'s')+' on this device'
+    +(SY.on()?' · cloud sync on':' · <span style="color:var(--orange);">cloud sync off on this device</span>')
+    +(l?'<br>Last merge '+new Date(l.at).toLocaleTimeString()+': '+esc(SY.describe(l.rep)):'');
+};
+SY.mount=function(){
+  const modal=document.querySelector('#m-settings .modal'); if(!modal||document.getElementById('sy-card'))return;
+  const card=document.createElement('div');
+  card.id='sy-card';
+  card.style.cssText='margin-top:16px;padding-top:14px;border-top:1px solid var(--border);';
+  card.innerHTML='<div class="card-title">Devices</div>'
+    +'<div id="sy-state" style="font-size:10px;color:var(--text2);line-height:1.6;margin:6px 0 8px;"></div>'
+    +'<div id="sy-msg" style="font-size:10px;margin-bottom:8px;min-height:14px;line-height:1.6;"></div>'
+    +'<div class="flex" style="flex-wrap:wrap;gap:7px;">'
+      +'<button class="btn btn-sm btn-primary" onclick="RX.sync.pullMerge(true)">Merge with cloud</button>'
+      +'<button class="btn btn-sm" onclick="RX.sync.diff()">Compare devices</button>'
+      +'<button class="btn btn-sm" onclick="RX.sync.cleanDupes()">Clean duplicates</button>'
+      +'<label for="sy-file" class="btn btn-sm" style="cursor:pointer;">Merge from file</label>'
+      +'<input type="file" id="sy-file" accept=".json" style="display:none;" onchange="RX.sync.mergeFile(event)">'
+    +'</div>'
+    +'<div style="font-size:9px;color:var(--text3);line-height:1.6;margin-top:8px;">Merging keeps both sides: an athlete on either device ends up on both, and nothing here is replaced. Deleting still deletes everywhere.</div>';
+  const data=[...modal.children].find(c=>/(^|\s)Data(\s|$)/.test((c.querySelector&&c.querySelector('.card-title')||{}).textContent||''));
+  if(data)modal.insertBefore(card,data);else modal.appendChild(card);
+  SY.paint();
+};
+if(typeof window.openModal==='function'){
+  const _om=window.openModal;
+  window.openModal=function(id){const r=_om.apply(this,arguments);if(id==='m-settings'){try{SY.mount();SY.paint();}catch(e){console.warn('[RX] devices panel',e);}}return r;};
+}
+SY.install();
+SY.stamp();                       // learn the current shape, stamp nothing
+setTimeout(()=>{try{SY.mount();}catch(e){}},1500);
+/* on boot, merge instead of replace */
+setTimeout(()=>{try{if(SY.on())SY.pullMerge(false);}catch(e){}},3000);
+})();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment, the Lab, move exercises, camera velocity, device merge','color:#7aa2c4');
 })();
 </script>
 
