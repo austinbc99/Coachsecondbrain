@@ -3725,6 +3725,9 @@ PB.screenProgram=function(athId,apply){
         });
         (s.exercises||[]).forEach((ex,ei)=>{
           if(ex.vald)return;   // never rename a test (a retest is data, not training load)
+          if(ex.gated)return;  // coach has deliberately progressed this item under a written
+                               // gate (the cue carries the condition) — flagging it every week
+                               // would train him to ignore the screen
           const n=ex.name||'';
           cfg.bans.forEach(rx=>{
             if(!rx.test(n))return;
@@ -5580,7 +5583,7 @@ console.log('%c[Perf] v'+PX.ver+' — maxes + % resolution + roster compliance',
 if(window.__rxLoaded){console.warn('evidence-dropin already loaded');return;}
 window.__rxLoaded=true;
 
-const RX={ver:'3.4'};
+const RX={ver:'3.8'};
 window.RX=RX;
 
 /* ═══════════════ SECTION 1 — SOURCES ════════════════════════════════════ */
@@ -12044,7 +12047,8 @@ SY.KINDS=[
   {k:'readiness',shape:'map',list:true},
   {k:'filmAnalyses',shape:'array'},
   {k:'groups',shape:'array'},
-  {k:'templates',shape:'array'}
+  {k:'templates',shape:'array'},
+  {k:'gear',shape:'array'}
 ];
 SY.kind=k=>SY.KINDS.find(x=>x.k===k);
 
@@ -12115,6 +12119,44 @@ SY.mergeList=function(a,b){
   out.sort((x,y)=>String((x&&x.date)||'').localeCompare(String((y&&y.date)||'')));
   return out;
 };
+/* Some fields are logs, not opinions: a test result recorded on the iPad
+   must survive even when the phone's copy of that athlete is "newer"
+   because the phone saved something else a second later. These merge field
+   by field, keyed, newest per key. Without this, whole-record last-write
+   quietly eats measurements. */
+SY.FIELDS={
+  athletes:[
+    {f:'sprintMap',key:x=>x&&x.settingId,stamp:x=>x&&x.date},
+    {f:'blocks',key:x=>x&&((x.source||'')+'|'+(x.ended||''))},
+    {f:'vbt',sub:'sessions',key:x=>x&&x.id}
+  ]
+};
+SY.unionBy=function(a,b,key,stamp){
+  const out=[],seen={};
+  (a||[]).concat(b||[]).forEach(x=>{
+    const k=key(x); if(k==null){out.push(x);return;}
+    const at=seen[k];
+    if(at==null){seen[k]=out.length;out.push(x);return;}
+    if(stamp&&String(stamp(x)||'')>String(stamp(out[at])||''))out[at]=x;
+  });
+  return out;
+};
+SY.fieldMerge=function(kindKey,win,lose){
+  const specs=SY.FIELDS[kindKey]; if(!specs||!win||!lose)return;
+  specs.forEach(sp=>{
+    if(sp.sub){
+      const w=win[sp.f], l=lose[sp.f];
+      if(!l||!l[sp.sub])return;
+      if(!w){win[sp.f]=l;return;}
+      w[sp.sub]=SY.unionBy(w[sp.sub],l[sp.sub],sp.key,sp.stamp);
+      return;
+    }
+    const w=win[sp.f], l=lose[sp.f];
+    if(!l||!l.length)return;
+    win[sp.f]=w&&w.length?SY.unionBy(w,l,sp.key,sp.stamp):l;
+  });
+};
+
 /* local + remote -> merged state, plus a report of what moved */
 SY.merge=function(local,remote){
   const rep={added:[],updated:[],kept:[],removed:[],byKind:{}};
@@ -12156,6 +12198,7 @@ SY.merge=function(local,remote){
       let win;
       if(lts||rts)win=rts>lts?r:l;                      // stamps decide
       else win=(JSON.stringify(r)||'').length>(JSON.stringify(l)||'').length?r:l;  // else the fuller record
+      SY.fieldMerge(K,win,win===r?l:r);      // logs survive either way
       merged[id]=win;
       if(win===r){k.updated++;rep.updated.push({kind:K,id});
         if(rts){if(!meta.ts[K])meta.ts[K]={};meta.ts[K][id]=rts;}}
@@ -12169,6 +12212,9 @@ SY.merge=function(local,remote){
     rep.byKind[K]=k;
   });
   try{SY.dedupe(out,rep);}catch(e){console.warn('[RX] dedupe',e);}
+  try{SY.dedupeGear(out,rep);}catch(e){console.warn('[RX] gear dedupe',e);}
+  // anything derived from the merged measurements is rebuilt, never merged
+  try{if(RX.rsprint&&RX.rsprint.refreshAll)RX.rsprint.refreshAll();}catch(e){console.warn('[RX] sprint refresh',e);}
   // tombstones from the other side, so they travel on
   Object.keys(rmeta.del||{}).forEach(K=>{
     if(!meta.del[K])meta.del[K]={};
@@ -12223,6 +12269,41 @@ SY.dedupe=function(st,rep){
   });
   if(rep&&merged.length)rep.deduped=merged;
   return merged;
+};
+/* the same setting seeded on two devices is one setting: fold by name and
+   carry every athlete's timings onto the id that is kept */
+SY.dedupeGear=function(st,rep){
+  st=st||S;
+  const gear=st.gear; if(!Array.isArray(gear)||gear.length<2)return [];
+  const by={}, folded=[];
+  gear.forEach(g=>{
+    if(!g||!g.id)return;
+    // NOT norm(): the app's norm() strips digits, which would fold
+    // "Constant force 15 lb" and "25 lb" into one setting
+    const k=String((g.device||'')+' '+(g.label||'')).toLowerCase().replace(/\s+/g,' ').trim();
+    (by[k]=by[k]||[]).push(g);
+  });
+  Object.values(by).forEach(list=>{
+    if(list.length<2)return;
+    const keep=list.slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)))[0];
+    list.filter(g=>g!==keep).forEach(dup=>{
+      (st.athletes||[]).forEach(a=>{
+        if(!a.sprintMap)return;
+        a.sprintMap.forEach(m=>{if(m.settingId===dup.id)m.settingId=keep.id;});
+        const seen={};
+        a.sprintMap=a.sprintMap.filter(m=>{
+          const prev=seen[m.settingId];
+          if(prev&&String(prev.date||'')>=String(m.date||''))return false;
+          seen[m.settingId]=m;return true;
+        });
+      });
+      st.gear=st.gear.filter(g=>g!==dup);
+      SY.tombstone('gear',dup.id);
+      folded.push(keep.device+' '+keep.label);
+    });
+  });
+  if(rep&&folded.length)rep.gearFolded=folded;
+  return folded;
 };
 SY.count=r=>r.added.length+r.updated.length+r.removed.length;
 SY.describe=function(rep){
@@ -12422,8 +12503,768 @@ setTimeout(()=>{try{SY.mount();}catch(e){}},1500);
 /* on boot, merge instead of replace */
 setTimeout(()=>{try{if(SY.on())SY.pullMerge(false);}catch(e){}},3000);
 })();
+/* ═══════════════ SECTION 29 — RESISTED SPRINT LOAD (F-v) ═════════════════
+   "How heavy should her sled be?" answered per athlete, per body weight,
+   and checked with a stopwatch instead of a guess.
 
-console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment, the Lab, move exercises, camera velocity, device merge','color:#7aa2c4');
+   THE MEASUREMENT. Time a free 10 yd, then the same 10 yd against a load.
+   Velocity decrement (Vdec) = how much slower the resisted run was:
+       Vdec% = (1 - free time / resisted time) x 100
+   Vdec places the run on the force-velocity curve, which is the point:
+   light loads train the velocity end, heavy loads the force end, and the
+   load that costs about half her speed is where sprint POWER peaks
+   (Cross 2017). Load is then reported back as a % of body weight, so it
+   carries across athletes and across weeks as they grow.
+
+   WHY NOT JUST %BW. A dragged sled turns most of its weight into friction,
+   so "70-90% BW" in the literature is a sled on turf, not 70-90% BW of
+   actual pull. A motor or a constant-force device (the OHM Run) applies
+   force directly, so the same slowdown needs roughly 40% of the sled
+   number (turf friction ~0.4, and that is a rough constant, not a law).
+   Mixing those two up is a fivefold error, so this tool keeps them apart
+   and always defers to the measured Vdec.
+
+   ZONES (Vdec first, load estimates second):
+     Velocity end   Vdec 5-15%    sled 10-20% BW    direct 4-8% BW
+     Transition     Vdec 16-35%   sled 25-45% BW    direct 10-18% BW
+     Peak power     Vdec 40-55%   sled 65-90% BW    direct 26-36% BW
+     Force end      Vdec 56%+     sled 90%+ BW      direct 36%+ BW
+
+   WHICH ZONE AN ATHLETE GETS is not a default: it comes off her profile.
+   Force-rich and expression-poor (a steady heavy end, scatter at the light
+   end) means she already has force she cannot express fast — she trains
+   the velocity end. Big peaks with an inconsistent floor means repeat
+   quality is the limiter — she trains the transition zone with a strict
+   drop-off rule. Genuinely low force gets the power/force end.
+
+   Evidence: Cross et al. 2017 (peak power at ~50% Vdec); Petrakos 2016
+   (load zones and their effects); Cahill 2019-2020 (load-velocity
+   profiling and sled training shifting the F-v profile in high-school
+   athletes); Morin's resisted-sprint methodology (Vdec over %BW). */
+(function(){
+const RS={};
+RX.rsprint=RS;
+
+RS.ZONES=[
+  {id:'vel',  label:'Velocity end', vdec:[5,15],  sled:[10,20], direct:[4,8],
+   trains:'Top-end mechanics and stride speed under a load she can still run against.'},
+  {id:'trans',label:'Transition',   vdec:[16,35], sled:[25,45], direct:[10,18],
+   trains:'Acceleration mechanics: still sprinting, but pushing noticeably harder into the ground.'},
+  {id:'power',label:'Peak power',   vdec:[40,55], sled:[65,90], direct:[26,36],
+   trains:'The load where sprint power peaks — most force per second (Cross 2017).'},
+  {id:'force',label:'Force end',    vdec:[56,80], sled:[90,140],direct:[36,56],
+   trains:'Pure horizontal force. Heavy, slow, and it stops being sprinting if you live here.'}
+];
+RS.zone=id=>RS.ZONES.find(z=>z.id===id)||RS.ZONES[1];
+RS.zoneOf=function(vdec){
+  if(vdec==null||isNaN(vdec))return null;
+  return RS.ZONES.find(z=>vdec>=z.vdec[0]&&vdec<=z.vdec[1])||(vdec<5?RS.ZONES[0]:RS.ZONES[3]);
+};
+/* Vdec from two timed runs over the same distance */
+RS.vdec=function(freeT,resT){
+  freeT=parseFloat(freeT);resT=parseFloat(resT);
+  if(!(freeT>0)||!(resT>0)||resT<=freeT)return null;
+  return +((1-freeT/resT)*100).toFixed(1);
+};
+/* loads for one athlete, in lb, both ways of applying the resistance */
+RS.loads=function(bw,method){
+  bw=parseFloat(bw)||0;
+  const key=method==='direct'?'direct':'sled';
+  return RS.ZONES.map(z=>({id:z.id,label:z.label,vdec:z.vdec,pct:z[key],
+    lo:Math.round(bw*z[key][0]/100),hi:Math.round(bw*z[key][1]/100),trains:z.trains}));
+};
+/* what to put on next time: the load-velocity line is close to straight in
+   this range, so scale the load by the ratio of the Vdec you want to the
+   Vdec you got, and cap the jump so nobody doubles the sled in one step */
+RS.next=function(loadUsed,vdecGot,vdecWant){
+  loadUsed=parseFloat(loadUsed);vdecGot=parseFloat(vdecGot);vdecWant=parseFloat(vdecWant);
+  if(!(loadUsed>0)||!(vdecGot>0)||!(vdecWant>0))return null;
+  const raw=loadUsed*vdecWant/vdecGot;
+  const capped=Math.max(loadUsed*0.5,Math.min(loadUsed*1.6,raw));
+  return {lb:Math.round(capped),raw:Math.round(raw),capped:Math.abs(capped-raw)>0.5};
+};
+/* the profile picks the zone; the coach can override */
+RS.bias=function(ath){
+  const v=(ath&&ath.vald)||{}, n=((ath&&ath.notes)||'')+' ';
+  const hi=x=>x!=null&&!isNaN(x);
+  if(/force[- ]rich|expression[- ]poor|scatter/i.test(n))return {id:'vel',why:'Force-rich, expression-poor: she has force she cannot express fast.'};
+  if(/inconsisten|repeat/i.test(n))return {id:'trans',why:'Repeat quality is the limiter, not top end.'};
+  if(hi(v.hop_force_pct)&&v.hop_force_pct>=70)return {id:'vel',why:'Force plate puts her force above the 70th percentile — the gap is expressing it fast, not making more.'};
+  if(hi(v.hop_force_pct)&&v.hop_force_pct<40)return {id:'power',why:'Low force off the plates: the power/force end is where she has the most to gain.'};
+  return {id:'trans',why:'No clear force or velocity bias on file — the transition zone is the safe middle.'};
+};
+
+
+/* ═════ the gear: your levels and your constant-force settings ═════
+   A level is a dial, not a force: "L4" means nothing to the maths until
+   someone runs against it. So every setting lives here as a named thing,
+   and each athlete's own timed run turns it into a zone for HER. The same
+   L4 can be peak power for one athlete and the force end for another —
+   that is not noise, that is the point. Constant-force and sled settings
+   carry their pounds, so the app can predict a zone before the first test
+   and then correct itself once the stopwatch disagrees. */
+RS.KINDS={level:'Level / dial',force:'Constant force (lb)',sled:'Sled weight (lb)'};
+RS.GEAR_SEED=[
+  {device:'OHM Run',label:'L4 (heavy)',kind:'level'},
+  {device:'OHM Run',label:'L6 (mid)',kind:'level'},
+  {device:'OHM Run',label:'L8 (light)',kind:'level'},
+  {device:'OHM Run',label:'Constant force 15 lb',kind:'force',lb:15},
+  {device:'OHM Run',label:'Constant force 25 lb',kind:'force',lb:25},
+  {device:'OHM Run',label:'Constant force 35 lb',kind:'force',lb:35},
+  {device:'Sled',label:'45 lb',kind:'sled',lb:45}
+];
+RS.gear=function(){
+  if(!Array.isArray(S.gear)||!S.gear.length){
+    S.gear=RS.GEAR_SEED.map(g=>Object.assign({id:uid()},g));
+    try{save();}catch(e){}
+  }
+  return S.gear;
+};
+RS.gearAdd=function(o){
+  const g=Object.assign({id:uid(),device:'OHM Run',kind:'level',label:'New setting'},o||{});
+  RS.gear().push(g);save();return g;
+};
+RS.gearDel=function(id){
+  S.gear=RS.gear().filter(g=>g.id!==id);
+  S.athletes.forEach(a=>{if(a.sprintMap)a.sprintMap=a.sprintMap.filter(m=>m.settingId!==id);});
+  save();RS.render();
+};
+RS.setting=id=>RS.gear().find(g=>g.id===id)||null;
+
+/* one timed pair turns a setting into a zone for this athlete */
+RS.record=function(athId,settingId,freeT,resT,dist){
+  const ath=S.athletes.find(a=>a.id===athId), g=RS.setting(settingId);
+  if(!ath||!g)return null;
+  const vdec=RS.vdec(freeT,resT);
+  if(vdec==null)return null;
+  const z=RS.zoneOf(vdec);
+  const entry={settingId,date:today(),freeT:+parseFloat(freeT).toFixed(2),resT:+parseFloat(resT).toFixed(2),
+    dist:dist||'10 yd',vdec,zone:z.id,bw:(ath.vald&&ath.vald.bw)||parseFloat(RS.st.bw)||null};
+  ath.sprintMap=(ath.sprintMap||[]).filter(m=>m.settingId!==settingId).concat(entry);
+  save();
+  return entry;
+};
+RS.mapOf=ath=>((ath&&ath.sprintMap)||[]).slice();
+RS.entry=(ath,settingId)=>RS.mapOf(ath).find(m=>m.settingId===settingId)||null;
+/* a map goes stale: bodies change, surfaces change, athletes get faster */
+RS.STALE_DAYS=42;
+RS.stale=function(ath,e){
+  if(!e)return false;
+  const days=(Date.now()-new Date(e.date+'T00:00:00').getTime())/864e5;
+  const bwNow=(ath.vald&&ath.vald.bw)||null;
+  const bwGap=e.bw&&bwNow?Math.abs(bwNow-e.bw)/e.bw*100:0;
+  return days>RS.STALE_DAYS||bwGap>5;
+};
+/* predict a zone from pounds before anyone has run against it */
+RS.predict=function(g,bw){
+  if(!g||!bw||!(g.kind==='force'||g.kind==='sled')||!g.lb)return null;
+  const pct=g.lb/bw*100, key=g.kind==='force'?'direct':'sled';
+  const z=RS.ZONES.find(x=>pct>=x[key][0]&&pct<=x[key][1])||(pct<RS.ZONES[0][key][0]?RS.ZONES[0]:RS.ZONES[3]);
+  return {zone:z.id,pct:+pct.toFixed(1),predicted:true};
+};
+/* the setting to use for a target zone: measured first, predicted second */
+RS.pick=function(athId,zoneId){
+  const ath=S.athletes.find(a=>a.id===athId); if(!ath)return null;
+  const bw=(ath.vald&&ath.vald.bw)||parseFloat(RS.st.bw)||0;
+  const Z=RS.zone(zoneId), mid=(Z.vdec[0]+Z.vdec[1])/2;
+  const measured=RS.mapOf(ath).filter(m=>m.zone===zoneId).sort((a,b)=>Math.abs(a.vdec-mid)-Math.abs(b.vdec-mid));
+  if(measured.length){
+    const g=RS.setting(measured[0].settingId);
+    if(g)return {setting:g,entry:measured[0],stale:RS.stale(ath,measured[0]),source:'measured'};
+  }
+  const pred=RS.gear().map(g=>({g,p:RS.predict(g,bw)})).filter(x=>x.p&&x.p.zone===zoneId);
+  if(pred.length)return {setting:pred[0].g,entry:null,predicted:pred[0].p,source:'predicted'};
+  return null;
+};
+/* which setting to test next to fill a hole in her map */
+RS.gaps=function(athId){
+  const ath=S.athletes.find(a=>a.id===athId); if(!ath)return [];
+  const have={};RS.mapOf(ath).forEach(m=>have[m.zone]=1);
+  return RS.ZONES.filter(z=>!have[z.id]).map(z=>z.id);
+};
+
+/* the zone each week of the block should sit in. Every sequence ends at
+   the velocity end: loaded work that never gets expressed fast stays a
+   push, not a sprint. */
+RS.SEQ={
+  vel:  ['trans','trans','vel','vel','vel','vel'],
+  trans:['trans','trans','trans','trans','vel','vel'],
+  power:['power','power','power','trans','vel','vel'],
+  force:['force','force','power','power','trans','vel']
+};
+
+/* ---- the block that goes into the program ---- */
+RS.WEEKS=6;
+RS.plan=function(o){
+  const athId=o.athId||null;
+  const bias=o.bias||'trans', bw=parseFloat(o.bw)||0, method=o.method==='direct'?'direct':'sled';
+  const L=RS.loads(bw,method);
+  const z=id=>L.find(x=>x.id===id);
+  const dose=(id,wk)=>{
+    const x=z(id);
+    return x?(x.lo===x.hi?x.lo+' lb':x.lo+'-'+x.hi+' lb')+' ('+x.pct[0]+'-'+x.pct[1]+'% BW)':'';
+  };
+  const unit=method==='direct'?'constant force':'on the sled';
+  const seq=RS.SEQ[bias]||RS.SEQ.trans;
+  // the setting for a zone, named the way it is named on the machine
+  const gearFor=zid=>{
+    if(!athId)return null;
+    const p=RS.pick(athId,zid);
+    if(!p)return null;
+    return {label:p.setting.device+' '+p.setting.label,
+      note:p.source==='measured'?'measured '+p.entry.vdec+'% slower for her'+(p.stale?', re-time it':''):'predicted from its pounds — time it once to confirm'};
+  };
+  const out=[];
+  for(let wk=1;wk<=RS.WEEKS;wk++){
+    const items=[];
+    const zid=seq[wk-1]||bias;
+    const g=gearFor(zid);
+    const setLabel=(id)=>{const x=g&&zid===id?g.label+' · ':'';return x+dose(id);};
+    const setNote=(id)=>g&&zid===id?' ('+g.note+')':'';
+    const hard=wk<=4;                                  // weeks 5-6 tip to free speed
+    if(zid==='vel'){
+      items.push({
+        name:'Resisted Sprint — velocity zone, 15 yd',
+        sets:String(wk<=2?4:wk<=4?5:4),reps:'1 x 15 yd',weight:setLabel('vel'),
+        cue:'Set '+setLabel('vel')+' '+unit+setNote('vel')+'. Push the first three steps, then run tall and fast — if it feels like a heavy push past step three, the load is too high.',
+        why:'Trains the velocity end of her curve, which is where her profile is thin. Light enough that her stride still looks like sprinting (5-15% slower than free).'
+      });
+      items.push({
+        name:'Free Sprint — 20 yd, max intent',
+        sets:String(wk<=4?3:4),reps:'1 x 20 yd',weight:'BW',
+        cue:'Straight after the resisted set, full recovery between runs (2-3 min). Time the last one.',
+        why:'The transfer run. Resisted work only shows up in free sprinting if free sprinting is in the same session.'
+      });
+    }else if(zid==='trans'){
+      items.push({
+        name:'Resisted Sprint — transition zone, 15 yd',
+        sets:String(hard?5:4),reps:'1 x 15 yd',weight:setLabel('trans'),
+        cue:'Set '+setLabel('trans')+' '+unit+setNote('trans')+'. Time every run. End the set when a run is more than 4% slower than her best one that day.',
+        why:'Acceleration mechanics under load, with repeat quality as the standard — her limiter is the floor, not the peak.'
+      });
+      items.push({
+        name:'Free Sprint — 20 yd, max intent',
+        sets:'3',reps:'1 x 20 yd',weight:'BW',
+        cue:'Full recovery (2-3 min). Time all three: the spread between fastest and slowest is the score, under 0.05 s.',
+        why:'Transfers the loaded work, and the spread measures the consistency she is actually training.'
+      });
+    }else{
+      items.push({
+        name:'Resisted Sprint — '+(zid==='power'?'peak power':'force')+' zone, 10-15 yd',
+        sets:String(hard?4:3),reps:'1 x 10-15 yd',weight:setLabel(zid),
+        cue:'Set '+setLabel(zid)+' '+unit+setNote(zid)+'. Big shin angle, long push, no rushing the steps. Full recovery between runs.',
+        why:'Builds the horizontal force her profile is short of; this is the load where sprint power peaks.'
+      });
+      items.push({
+        name:'Free Sprint — 20 yd, max intent',
+        sets:'3',reps:'1 x 20 yd',weight:'BW',
+        cue:'Straight after the loaded runs, full recovery, time the last one.',
+        why:'Heavy work without free sprinting in the same session builds a push, not a sprint.'
+      });
+    }
+    if(wk===RS.WEEKS){
+      items.push({
+        name:'Sprint Retest — free 10 yd and resisted 10 yd',
+        sets:'2',reps:'1 ea',weight:'test load',
+        cue:'Same load and same surface as the first test. Two runs each, keep the best.',
+        why:'Re-measures velocity decrement, so the next block starts from where she is now rather than where she was.'
+      });
+    }
+    out.push({week:wk,zone:zid,gear:g?g.label:null,items});
+  }
+  return {bias,method,bw,loads:L,seq,weeks:out};
+};
+
+/* write it into the program: the Speed / COD block of each remaining week,
+   ahead of the change-of-direction work, and never into a logged week */
+RS.apply=function(athId,plan,o){
+  o=o||{};
+  const p=S.programs[athId]; if(!p||!plan)return {added:0,weeks:[],skipped:[]};
+  const cur=p.currentWeek||1;
+  const open=(p.weeks_data||[]).filter(w=>w.week>=cur&&!RX.assess.weekLogged(p,w.week));
+  const skipped=(p.weeks_data||[]).filter(w=>w.week>=cur&&RX.assess.weekLogged(p,w.week)).map(w=>w.week);
+  const weeks=open.slice(0,plan.weeks.length);
+  let added=0;
+  weeks.forEach((w,i)=>{
+    const spec=plan.weeks[i]; if(!spec)return;
+    // the linear speed day. The session's own name wins over a head count of
+    // Speed / COD items, or a cutting day full of COD drills would take the
+    // sprint work off the day it belongs on.
+    let best=null;
+    (w.days||[]).forEach((d,di)=>(d.sessions||[]).forEach((s,si)=>{
+      const named=/speed|sprint|linear|accel/i.test(s.type||'')&&!/^cod\b|change of direction/i.test(s.type||'');
+      const n=(named?100:0)+(s.exercises||[]).filter(e=>RX.blockOf(e)==='Speed / COD').length;
+      if(!best||n>best.n)best={d,s,di,si,n};
+    }));
+    if(!best)return;
+    const s=best.s; if(!s.exercises)s.exercises=[];
+    const mine=e=>e&&e.src==='rsprint';
+    s.exercises=s.exercises.filter(e=>!mine(e));                   // re-apply cleanly
+    const at=Math.max(0,s.exercises.findIndex(e=>RX.blockOf(e)==='Speed / COD'));
+    const items=spec.items.map(x=>Object.assign({block:'Speed / COD',tempo:'',rpe:'',rest:'2-3 min',src:'rsprint',slot:'',pair:''},x));
+    s.exercises.splice(at,0,...items);
+    added+=items.length;
+  });
+  p.edited=true;
+  const ath=S.athletes.find(a=>a.id===athId);
+  if(ath){
+    ath.sprintLoad=Object.assign({date:today(),bias:plan.bias,method:plan.method,bw:plan.bw},o.test||{});
+    if(!S.sessions[athId])S.sessions[athId]=[];
+    S.sessions[athId].push({date:today(),updates:{},
+      notes:'Resisted sprint block set: '+RS.zone(plan.bias).label+' zone, '
+        +(plan.loads.find(l=>l.id===plan.bias)||{lo:'?'}).lo+'-'+(plan.loads.find(l=>l.id===plan.bias)||{hi:'?'}).hi+' lb '
+        +(plan.method==='direct'?'constant force':'on the sled')
+        +(o.test&&o.test.vdec?' (measured '+o.test.vdec+'% velocity decrement)':'')});
+  }
+  save();
+  return {added,weeks:weeks.map(w=>w.week),skipped};
+};
+RS.remove=function(athId){
+  const p=S.programs[athId]; if(!p)return 0;
+  let n=0;
+  (p.weeks_data||[]).forEach(w=>{
+    if(RX.assess.weekLogged(p,w.week))return;
+    (w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>{
+      const b=(s.exercises||[]).length;
+      s.exercises=(s.exercises||[]).filter(e=>e.src!=='rsprint');
+      n+=b-s.exercises.length;
+    }));
+  });
+  p.edited=true;save();
+  return n;
+};
+
+/* ---- UI: Lab → Sprint load ---- */
+RS.st={athId:null,bw:'',method:'sled',dist:'10',freeT:'',resT:'',loadUsed:'',bias:null};
+RS.el=id=>document.getElementById(id);
+RS.ath=function(){
+  const sel=document.getElementById('film-ath');
+  const id=RS.st.athId||(sel&&sel.value)||null;
+  return S.athletes.find(a=>a.id===id)||null;
+};
+RS.set=function(k,v){
+  RS.st[k]=v;
+  if(k==='athId'){const a=S.athletes.find(x=>x.id===v);RS.st.bw=a&&a.vald&&a.vald.bw||'';RS.st.bias=null;}
+  RS.render();
+};
+RS.CSS=`
+#rsp .rs-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:12px;}
+#rsp .rs-f{display:flex;flex-direction:column;gap:6px;min-width:0;}
+#rsp .rs-f label{font:500 9px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin:0;}
+#rsp input,#rsp select{width:100%;font-size:14px !important;padding:9px 10px !important;}
+#rsp table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px;}
+#rsp th{font:500 8px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);text-align:left;padding:6px 4px;border-bottom:1px solid var(--border2);}
+#rsp td{padding:8px 4px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top;}
+#rsp td b{color:var(--text);font-weight:600;}
+#rsp tr.rs-on td{background:rgba(184,255,87,.06);}
+#rsp .rs-num{font-family:var(--mono);}
+#rsp .rs-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:12px 0;}
+#rsp .rs-kpi div{border:1px solid var(--border2);border-radius:8px;padding:10px;}
+#rsp .rs-kpi b{display:block;font:700 20px/1.2 var(--disp);color:var(--text);}
+#rsp .rs-kpi span{font:500 8px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);}
+#rsp .rs-note{font:400 10px/1.6 var(--disp);color:var(--text3);margin-top:10px;}
+#rsp .rs-msg{font:400 11px/1.6 var(--disp);color:var(--text2);border-left:2px solid var(--border2);padding-left:10px;margin:10px 0;}
+#rsp .rs-msg.ok{border-color:var(--accent);}
+#rsp .rs-msg.bad{border-color:#e13b31;color:#ffb4ae;}
+#rsp .rs-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+`;
+RS.msg=function(t,tone){const e=RS.el('rs-msg');if(!e)return;e.textContent=t||'';e.className='rs-msg'+(tone?' '+tone:'');};
+RS.render=function(){
+  const wrap=document.getElementById('rsp'); if(!wrap)return;
+  const st=RS.st, ath=RS.ath();
+  const bw=parseFloat(st.bw)||(ath&&ath.vald&&ath.vald.bw)||0;
+  const vdec=RS.vdec(st.freeT,st.resT);
+  const zone=RS.zoneOf(vdec);
+  const rec=ath?(st.bias?{id:st.bias,why:'Chosen by you.'}:RS.bias(ath)):null;
+  const loads=RS.loads(bw,st.method);
+  const opts=(list,val)=>list.map(o=>'<option value="'+esc(o[0])+'"'+(String(o[0])===String(val)?' selected':'')+'>'+esc(o[1])+'</option>').join('');
+  const aopts=S.athletes.slice().sort((a,b)=>an(a).localeCompare(an(b))).map(a=>'<option value="'+a.id+'"'+((ath&&a.id===ath.id)?' selected':'')+'>'+esc(an(a))+'</option>').join('');
+  const nxt=vdec&&st.loadUsed&&rec?RS.next(st.loadUsed,vdec,(RS.zone(rec.id).vdec[0]+RS.zone(rec.id).vdec[1])/2):null;
+  wrap.innerHTML=
+   '<div class="card">'
+   +'<div class="card-title"><span>Sprint load — resistance per body weight</span></div>'
+   +'<div class="rs-row">'
+     +'<div class="rs-f"><label for="rs-ath">Athlete</label><select id="rs-ath" onchange="RX.rsprint.set(\'athId\',this.value)"><option value="">— pick —</option>'+aopts+'</select></div>'
+     +'<div class="rs-f"><label for="rs-bw">Body weight (lb)</label><input id="rs-bw" type="number" value="'+esc(bw||'')+'" onchange="RX.rsprint.set(\'bw\',this.value)"></div>'
+     +'<div class="rs-f"><label for="rs-method">Resistance</label><select id="rs-method" onchange="RX.rsprint.set(\'method\',this.value)">'+opts([['sled','Sled (dragged)'],['direct','Constant force (OHM / motor)']],st.method)+'</select></div>'
+   +'</div>'
+   +'<div class="rs-row">'
+     +'<div class="rs-f"><label for="rs-free">Free 10 yd (s)</label><input id="rs-free" type="number" step="0.01" value="'+esc(st.freeT)+'" onchange="RX.rsprint.set(\'freeT\',this.value)"></div>'
+     +'<div class="rs-f"><label for="rs-res">Resisted 10 yd (s)</label><input id="rs-res" type="number" step="0.01" value="'+esc(st.resT)+'" onchange="RX.rsprint.set(\'resT\',this.value)"></div>'
+     +'<div class="rs-f"><label for="rs-load">Load used (lb)</label><input id="rs-load" type="number" value="'+esc(st.loadUsed)+'" onchange="RX.rsprint.set(\'loadUsed\',this.value)"></div>'
+   +'</div>'
+   +(vdec!=null
+     ?'<div class="rs-kpi"><div><b>'+vdec+'%</b><span>Velocity decrement</span></div>'
+       +'<div><b>'+esc(zone.label)+'</b><span>Zone she trained</span></div>'
+       +(nxt?'<div><b>'+nxt.lb+' lb</b><span>Next time, for her zone</span></div>':'')
+      +'</div>'
+      +'<div class="rs-note">'+esc(zone.trains)+(nxt&&nxt.capped?' The jump was capped at 60% — change the load in steps and re-time.':'')+'</div>'
+     :'<div class="rs-note">Time a free 10 yd and the same 10 yd against a known load. The drop between them is what sets the zone — %BW alone cannot, because a sled on turf and a constant-force device are not the same resistance.</div>')
+   +(rec?'<div class="rs-msg ok">Her zone: <b>'+esc(RS.zone(rec.id).label)+'</b>. '+esc(rec.why)+'</div>':'')
+   +'<div class="rs-row"><div class="rs-f"><label for="rs-bias">Train which zone</label><select id="rs-bias" onchange="RX.rsprint.set(\'bias\',this.value)">'
+     +opts(RS.ZONES.map(z=>[z.id,z.label+' · Vdec '+z.vdec[0]+'-'+z.vdec[1]+'%']),(rec&&rec.id)||'trans')+'</select></div></div>'
+   +'<table><thead><tr><th>Zone</th><th>Vdec</th><th>% BW</th><th>'+(bw?'For '+(ath?esc(ath.first):'her')+' ('+Math.round(bw)+' lb)':'Load')+'</th></tr></thead><tbody>'
+     +loads.map(l=>'<tr'+(rec&&rec.id===l.id?' class="rs-on"':'')+'><td><b>'+esc(l.label)+'</b></td><td class="rs-num">'+l.vdec[0]+'-'+l.vdec[1]+'%</td>'
+       +'<td class="rs-num">'+l.pct[0]+'-'+l.pct[1]+'%</td><td class="rs-num">'+(bw?l.lo+'-'+l.hi+' lb':'—')+'</td></tr>').join('')
+   +'</tbody></table>'
+   +'<div class="rs-note">'+(st.method==='direct'
+      ?'Constant force: the number is the force the device pulls with, so it is roughly 40% of the sled number for the same slowdown.'
+      :'Sled: most of the weight becomes friction, so these are sled weights on turf, not pull force. On a different surface the same weight gives a different Vdec — re-time it.')+'</div>'
+   +RS.gearHtml(ath,bw)
+   +RS.blockHtml(ath,bw)
+   +'<div id="rs-msg" class="rs-msg"></div>'
+   +'<div class="rs-acts">'
+     +'<button class="btn btn-primary btn-sm" onclick="RX.rsprint.applyClick()">Add '+RS.WEEKS+' weeks to the program</button>'
+     +'<button class="btn btn-sm" onclick="RX.rsprint.applyGroup()">Add for the group</button>'
+     +'<button class="btn btn-sm" onclick="RX.rsprint.removeClick()">Remove it</button>'
+   +'</div>'
+   +'</div>';
+};
+RS.planNow=function(ath){
+  const bw=parseFloat(RS.st.bw)||(ath&&ath.vald&&ath.vald.bw)||0;
+  const bias=RS.st.bias||RS.bias(ath).id;
+  return RS.plan({bias,bw,method:RS.st.method,athId:ath&&ath.id});
+};
+RS.applyClick=function(){
+  const ath=RS.ath(); if(!ath){RS.msg('Pick an athlete first.','bad');return;}
+  if(!S.programs[ath.id]){RS.msg(an(ath)+' has no program to add it to.','bad');return;}
+  const plan=RS.planNow(ath);
+  if(!plan.bw){RS.msg('Put her body weight in — the loads come from it.','bad');return;}
+  const vdec=RS.vdec(RS.st.freeT,RS.st.resT);
+  const r=RS.apply(ath.id,plan,{test:{vdec,freeT:RS.st.freeT,resT:RS.st.resT,loadUsed:RS.st.loadUsed}});
+  RS.msg(r.added?('Added '+r.added+' items across weeks '+r.weeks.join(', ')+' for '+an(ath)+' — '+RS.zone(plan.bias).label+' zone.'
+    +(r.skipped.length?' Weeks '+r.skipped.join(', ')+' already have logged work, so they were left alone.':'')):'Nothing to add: no speed day found in the open weeks.',r.added?'ok':'bad');
+  if(typeof toast==='function'&&r.added)toast('Sprint block added for '+ath.first);
+};
+RS.applyGroup=function(){
+  const gid=RX._grpFilter||RX._grpView;
+  const g=gid&&RX.grp.get(gid);
+  if(!g){RS.msg('Pick a group on the Athletes page first (the chip at the top), then come back.','bad');return;}
+  const mem=RX.gv.withProg(g);
+  if(!mem.length){RS.msg('Nobody in that group has a program yet.','bad');return;}
+  const done=[];
+  mem.forEach(a=>{
+    const bw=(a.vald&&a.vald.bw)||parseFloat(RS.st.bw)||0;
+    if(!bw)return;
+    const bias=RS.st.bias||RS.bias(a).id;
+    const plan=RS.plan({bias,bw,method:RS.st.method,athId:a.id});
+    const r=RS.apply(a.id,plan,{});
+    if(r.added)done.push(a.first+' ('+RS.zone(bias).label+')');
+  });
+  RS.msg(done.length?('Added for '+done.join(', ')+'. Each athlete got the zone her own profile calls for.'):'Nothing added — check body weights are on file.',done.length?'ok':'bad');
+};
+RS.removeClick=function(){
+  const ath=RS.ath(); if(!ath)return;
+  const n=RS.remove(ath.id);
+  RS.msg(n?('Removed '+n+' sprint items from the weeks that are not logged yet.'):'Nothing of mine to remove.','ok');
+};
+
+/* ---- your gear, and what each setting is worth for THIS athlete ---- */
+RS.gearHtml=function(ath,bw){
+  const gear=RS.gear();
+  const rows=gear.map(g=>{
+    const e=ath?RS.entry(ath,g.id):null;
+    const pred=RS.predict(g,bw);
+    const z=e?RS.zone(e.zone):(pred?RS.zone(pred.zone):null);
+    const stale=e&&ath?RS.stale(ath,e):false;
+    const read=e?('<b>'+e.vdec+'% slower</b> · '+esc(z.label)+(stale?' <span style="color:var(--orange);">· re-time it</span>':'')
+        +'<div style="font-size:9px;color:var(--text3);">'+esc(e.freeT+' → '+e.resT+' s · '+e.date)+'</div>')
+      :(pred?'<span style="color:var(--text3);">likely '+esc(z.label)+' ('+pred.pct+'% BW) — not timed yet</span>'
+            :'<span style="color:var(--text3);">not timed yet</span>');
+    return '<tr><td><b>'+esc(g.device)+' '+esc(g.label)+'</b><div style="font-size:9px;color:var(--text3);">'+esc(RS.KINDS[g.kind]||g.kind)+(g.lb?' · '+g.lb+' lb':'')+'</div></td>'
+      +'<td>'+read+'</td>'
+      +'<td style="white-space:nowrap;"><input id="rsg-f-'+g.id+'" type="number" step="0.01" placeholder="free" style="width:64px;display:inline-block;margin-right:4px;">'
+        +'<input id="rsg-r-'+g.id+'" type="number" step="0.01" placeholder="loaded" style="width:70px;display:inline-block;">'
+        +'<button class="btn btn-sm" style="margin-left:6px;" onclick="RX.rsprint.saveTest(\''+g.id+'\')">Save</button>'
+        +'<button class="btn btn-sm" onclick="RX.rsprint.gearDel(\''+g.id+'\')">×</button></td></tr>';
+  }).join('');
+  const gapIds=ath?RS.gaps(ath.id):[];
+  return '<div style="margin-top:18px;border-top:1px solid var(--border2);padding-top:14px;">'
+    +'<div style="font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">Your gear — what each setting is worth'+(ath?' for '+esc(ath.first):'')+'</div>'
+    +'<table><thead><tr><th>Setting</th><th>'+(ath?esc(ath.first)+'\u2019s read':'Read')+'</th><th>Time it (free / loaded, s)</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +(gapIds.length&&ath?'<div class="rs-note">Not yet timed for her: '+gapIds.map(id=>esc(RS.zone(id).label)).join(', ')+'. One 10 yd run at each setting fills the map.</div>':'')
+    +'<div class="rs-acts">'
+      +'<input id="rs-newlabel" placeholder="e.g. L5 or 30 lb CF" style="width:150px;">'
+      +'<select id="rs-newkind" style="width:160px;">'+Object.entries(RS.KINDS).map(([k,v])=>'<option value="'+k+'">'+esc(v)+'</option>').join('')+'</select>'
+      +'<input id="rs-newlb" type="number" placeholder="lb (if any)" style="width:110px;">'
+      +'<button class="btn btn-sm" onclick="RX.rsprint.addGear()">Add setting</button>'
+    +'</div></div>';
+};
+RS.saveTest=function(gid){
+  const ath=RS.ath(); if(!ath){RS.msg('Pick an athlete first.','bad');return;}
+  const f=RS.el('rsg-f-'+gid), r=RS.el('rsg-r-'+gid);
+  const free=(f&&f.value)||RS.st.freeT, res=r&&r.value;
+  const e=RS.record(ath.id,gid,free,res,RS.st.dist+' yd');
+  if(!e){RS.msg('Need a free time and a loaded time, and the loaded one has to be slower.','bad');return;}
+  const g=RS.setting(gid);
+  RS.msg(g.device+' '+g.label+' is '+e.vdec+'% slower for '+ath.first+' — that is the '+RS.zone(e.zone).label+'. Saved.','ok');
+  RS.render();
+};
+RS.addGear=function(){
+  const l=RS.el('rs-newlabel'), k=RS.el('rs-newkind'), lb=RS.el('rs-newlb');
+  const label=(l&&l.value||'').trim();
+  if(!label){RS.msg('Name the setting the way it reads on the machine.','bad');return;}
+  RS.gearAdd({label,kind:(k&&k.value)||'level',lb:parseFloat(lb&&lb.value)||undefined,device:(k&&k.value)==='sled'?'Sled':'OHM Run'});
+  RS.msg('Added '+label+'. Time it once per athlete and it maps itself.','ok');
+  RS.render();
+};
+
+/* ---- the block, week by week, with the setting for each week ---- */
+RS.blockHtml=function(ath,bw){
+  if(!ath)return '';
+  const bias=RS.st.bias||RS.bias(ath).id;
+  const plan=RS.plan({bias,bw,method:RS.st.method,athId:ath.id});
+  const rows=plan.weeks.map(w=>{
+    const z=RS.zone(w.zone), l=plan.loads.find(x=>x.id===w.zone);
+    const p=RS.pick(ath.id,w.zone);
+    const set=p?esc(p.setting.device+' '+p.setting.label)+(p.source==='measured'?' <span style="color:var(--accent);">'+p.entry.vdec+'%</span>':' <span style="color:var(--text3);">(predicted)</span>')
+      :'<span style="color:var(--orange);">no setting mapped — time one</span>';
+    return '<tr><td><b>Wk '+w.week+'</b></td><td>'+esc(z.label)+'</td><td class="rs-num">'+(l?l.lo+'-'+l.hi+' lb':'')+'</td><td>'+set+'</td></tr>';
+  }).join('');
+  return '<div style="margin-top:18px;border-top:1px solid var(--border2);padding-top:14px;">'
+    +'<div style="font:500 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">The block — which resistance, which week</div>'
+    +'<table><thead><tr><th>Week</th><th>Zone</th><th>Load</th><th>Setting to use</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="rs-note">Every sequence finishes at the velocity end: loaded work that never gets expressed fast stays a push, not a sprint.</div></div>';
+};
+RS.mount=function(){
+  const pg=document.getElementById('pg-lab'), tools=document.getElementById('lab-tools'), vbt=document.getElementById('vbt');
+  if(!pg||!tools||!vbt)return false;
+  if(!document.getElementById('rs-css')){const s=document.createElement('style');s.id='rs-css';s.textContent=RS.CSS;(document.head||document.documentElement).appendChild(s);}
+  if(!document.getElementById('rsp')){
+    const w=document.createElement('div');w.id='rsp';
+    vbt.parentElement.insertBefore(w,vbt.nextSibling);
+  }
+  if(!tools.querySelector('[data-tool="sprint"]')){
+    const b=document.createElement('button');b.type='button';b.dataset.tool='sprint';b.textContent='Sprint load';
+    b.onclick=()=>RX.vbt.tool('sprint');
+    tools.appendChild(b);
+  }
+  RS.render();
+  return true;
+};
+/* the Lab's tool switch learns the third tool */
+if(RX.vbt&&typeof RX.vbt.tool==='function'){
+  const _t=RX.vbt.tool;
+  RX.vbt.tool=function(which){
+    const r=_t.call(this,which==='sprint'?'screen':which);   // hides the camera tool
+    const pg=document.getElementById('pg-lab'), rsp=document.getElementById('rsp'), tools=document.getElementById('lab-tools');
+    if(pg)pg.classList.toggle('lab-sprint',which==='sprint');
+    if(rsp)rsp.style.display=which==='sprint'?'block':'none';
+    if(tools)tools.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.tool===which));
+    if(which==='sprint')RS.render();
+    return r;
+  };
+}
+if(!document.getElementById('rs-css2')){
+  const s=document.createElement('style');s.id='rs-css2';
+  s.textContent='#rsp{display:none;}#pg-lab.lab-sprint #pg-film{display:none !important;}#pg-lab.lab-sprint #rsp{display:block;}';
+  (document.head||document.documentElement).appendChild(s);
+}
+if(RX.lab&&typeof RX.lab.mount==='function'){
+  const _m=RX.lab.mount;
+  RX.lab.mount=function(){const r=_m.apply(this,arguments);try{if(r)RS.mount();}catch(e){console.warn('[RX] sprint load mount',e);}return r;};
+}
+setTimeout(()=>{try{RS.mount();}catch(e){}},1600);
+})();
+/* ═══════════════ SECTION 30 — BLOCK B: ELASTIC REBUILD (AUSTIN C.) ═══════
+   Built from the 29 Sep 2026 VALD retest, which closed Block A:
+     hop force        6282 N (91st) -> 7013 N (98th)
+     hop asymmetry    19% right      -> 12% LEFT (side flipped, size down)
+     SL jump asym     20%            -> 9.4%   (the block's main goal, met)
+     drop jump RSI    1.09 (45th)    -> 1.09 (45th)  — did not move
+   So force is now elite and reactive strength is not. Block B keeps the
+   force and spends the eight weeks on short ground contacts, sprinting and
+   the APEX events, with plyometric volume counted rather than guessed and
+   the knee watched by the 24-hour rule (Malliaras staged loading).
+
+   On his devices this replaces Block A once, keeps his load history, files
+   the retest as a session note, and updates his VALD numbers. A block with
+   logged work is never overwritten silently. */
+(function(){
+RX.AUSTIN_B={
+  vald:{test_date:'2026-09-29',hop_force:7013,hop_force_pct:98,hop_force_asym:'12% L',
+    sl_jump_pow_l:32.7,sl_jump_pow_r:36.1,sl_jump_asym_pct:9.4,sl_jump_asym_side:'Right',
+    dj_rsi:1.09,rsi:1.09,dj_rsi_pct:45,cmj_pow:55.8,cmj_pct:69,
+    spd:1.799,spd40:4.858,pro_agility:4.915,l_drill:5.326,y_agility:9.633,cut_112:5.988,cut_1213:9.327,bw:246},
+  program:{"weeks":8,"phase":"Re-entry → Elastic → Expression → Deload/Retest","goal":"Turn the force into speed: RSI 1.09 → 1.25+, keep hop force at the 98th pct, sharpen the APEX events","season":"Off-Season","loading":"pct1rm","programVersion":"austin-blockB-1","source":"Block B — Elastic Rebuild","primaryGoals":["Drop Jump RSI ≥ 1.25 (from 1.09)","Hop test force held ≥ 7000 N","SL jump asymmetry stays ≤ 10%","40 yd under 4.75 s (from 4.858)","Mile: run it, knee settled inside 24 h every week"],"valdFlags":["Hop force 7013 N, 98th pct (was 6282 N, 91st)","Hop asymmetry 12% LEFT higher — flipped side from 19% right","SL jump asymmetry 9.4% (was 20%) — goal met","Drop Jump RSI 1.09, 45th pct — unchanged through Block A","CMJ peak power 55.8 W/kg, 69th pct"],"rules":["Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","Plyometrics are counted, not guessed: the week's contact number is the ceiling for the whole day.","No front-loaded squats (QL). Leg loading stays trap bar, hip thrust, RDL and split-squat family.","Resisted sprint resistance is chosen in Lab → Sprint load by what it does to the 10 yd time, never by the dial number.","Left leg still leads every unilateral set through week 4, then sides are equal."],"weeks_data":[{"week":1,"phase":"Re-entry","focus":"Contacts 40 · sprint 20 yd · resisted transition","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 40 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Hop and Stick — in place","block":"Plyo / Reactive","sets":"3","reps":"5 ea","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Single leg, small height, land quiet and hold two seconds. Left leg first.","why":"Re-teaches landing before any real height is added, and keeps the left side leading.","src":"coach","tendonWork":true},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"4","reps":"5","weight":"300 lb (70%)","tempo":"2-0-1","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Controlled down, fast up.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"4","reps":"6","weight":"210 lb (72%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Transition, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the transition for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 20 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"L4 / R3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 4 x 400 m at goal-mile 400 pace + 5 s, 2 min rest","block":"Conditioning","sets":"1","reps":"4 x 400 m at goal-mile 400 pace + 5 s, 2 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"3","reps":"3","weight":"335 lb (78%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":2,"phase":"Re-entry","focus":"Contacts 50 · sprint 20 yd · resisted transition","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 50 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Hop and Stick — in place","block":"Plyo / Reactive","sets":"3","reps":"5 ea","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Single leg, small height, land quiet and hold two seconds. Left leg first.","why":"Re-teaches landing before any real height is added, and keeps the left side leading.","src":"coach","tendonWork":true},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"4","reps":"5","weight":"310 lb (72%)","tempo":"2-0-1","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Controlled down, fast up.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"4","reps":"6","weight":"220 lb (75%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Transition, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the transition for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 20 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"L4 / R3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 5 x 400 m at goal-mile 400 pace + 3 s, 2 min rest","block":"Conditioning","sets":"1","reps":"5 x 400 m at goal-mile 400 pace + 3 s, 2 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"3","reps":"3","weight":"345 lb (80%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":3,"phase":"Elastic","focus":"Contacts 60 · drop jump 12 in · sprint 30 yd · resisted velocity end","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 60 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Drop Jump — box 12 in","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"fast","rpe":"","rest":"90s","cue":"Gate: last week's contacts settled inside 24 h and soreness stayed at or under 3/10 — if not, repeat last week instead. Step off, do not jump off. Land and leave the floor as fast as possible, under 0.25 s on the ground. Stop the set the moment ground time gets long.","why":"The exact quality the retest measures: RSI is jump height divided by ground time, and it was flat all of Block A.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"4","reps":"4","weight":"310 lb (72%)","tempo":"2-0-1","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Controlled down, fast up.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"5","reps":"5","weight":"225 lb (77%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Velocity end, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the velocity end for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 30 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"L4 / R3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 3 x 800 m at goal-mile 400 pace + 4 s per 400, 3 min rest","block":"Conditioning","sets":"1","reps":"3 x 800 m at goal-mile 400 pace + 4 s per 400, 3 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Approach Jump to a target","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Three-step approach, jump to touch. Same target each week, raise it when it gets easy.","why":"The high jump event, and a short-contact task that feeds RSI.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"3","reps":"2","weight":"355 lb (82%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":4,"phase":"Elastic","focus":"Contacts 70 · drop jump 12 in · sprint 30 yd · resisted velocity end","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 70 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Drop Jump — box 12 in","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"fast","rpe":"","rest":"90s","cue":"Gate: last week's contacts settled inside 24 h and soreness stayed at or under 3/10 — if not, repeat last week instead. Step off, do not jump off. Land and leave the floor as fast as possible, under 0.25 s on the ground. Stop the set the moment ground time gets long.","why":"The exact quality the retest measures: RSI is jump height divided by ground time, and it was flat all of Block A.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"4","reps":"3","weight":"320 lb (75%)","tempo":"2-0-1","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Controlled down, fast up.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"5","reps":"5","weight":"235 lb (80%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Velocity end, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the velocity end for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 30 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"L4 / R3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 4 x 800 m at goal-mile 400 pace + 2 s per 400, 3 min rest","block":"Conditioning","sets":"1","reps":"4 x 800 m at goal-mile 400 pace + 2 s per 400, 3 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Approach Jump to a target","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Three-step approach, jump to touch. Same target each week, raise it when it gets easy.","why":"The high jump event, and a short-contact task that feeds RSI.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Alternate Bound","block":"Plyo / Reactive","sets":"4","reps":"20 m","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Cover ground, not height, land under the hips.","why":"Elastic output on one leg at a time, the bridge between hops and sprinting.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"3","reps":"2","weight":"360 lb (84%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":5,"phase":"Elastic","focus":"Contacts 80 · drop jump 18 in · sprint 40 yd · resisted velocity end","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 80 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Drop Jump — box 18 in","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"fast","rpe":"","rest":"90s","cue":"Gate: last week's contacts settled inside 24 h and soreness stayed at or under 3/10 — if not, repeat last week instead. Step off, do not jump off. Land and leave the floor as fast as possible, under 0.25 s on the ground. Stop the set the moment ground time gets long.","why":"The exact quality the retest measures: RSI is jump height divided by ground time, and it was flat all of Block A.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"3","reps":"3","weight":"335 lb (78%)","tempo":"2-0-1","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Controlled down, fast up.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"4","reps":"4","weight":"240 lb (82%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Velocity end, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the velocity end for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 40 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 2 x 1200 m at goal-mile 400 pace + 2 s per 400, 4 min rest","block":"Conditioning","sets":"1","reps":"2 x 1200 m at goal-mile 400 pace + 2 s per 400, 4 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Approach Jump to a target","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Three-step approach, jump to touch. Same target each week, raise it when it gets easy.","why":"The high jump event, and a short-contact task that feeds RSI.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Alternate Bound","block":"Plyo / Reactive","sets":"4","reps":"20 m","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Cover ground, not height, land under the hips.","why":"Elastic output on one leg at a time, the bridge between hops and sprinting.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"3","reps":"2","weight":"370 lb (86%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":6,"phase":"Expression","focus":"Contacts 70 · drop jump 18 in · sprint 40 yd · resisted velocity end","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 70 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Drop Jump — box 18 in","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"fast","rpe":"","rest":"90s","cue":"Gate: last week's contacts settled inside 24 h and soreness stayed at or under 3/10 — if not, repeat last week instead. Step off, do not jump off. Land and leave the floor as fast as possible, under 0.25 s on the ground. Stop the set the moment ground time gets long.","why":"The exact quality the retest measures: RSI is jump height divided by ground time, and it was flat all of Block A.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"4","reps":"2","weight":"260 lb (60%)","tempo":"max intent up","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Every rep as fast as you can move it; stop the set when the bar slows.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"5","weight":"heavy","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"4","reps":"3","weight":"250 lb (85%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Resisted Sprint — Velocity end, 20 yd","block":"Speed / COD","sets":"4","reps":"1 x 20 yd","weight":"set from Lab > Sprint load","tempo":"","rpe":"","rest":"2-3 min","cue":"Set the OHM to whichever of your settings times into the velocity end for you. Time the first run to confirm it.","why":"Resistance chosen by what it does to your speed, not by the dial number.","src":"coach"},{"name":"Free Sprint — 40 yd","block":"Speed / COD","sets":"3","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Straight after the resisted runs, full recovery, time the last one.","why":"Loaded work only transfers when free sprinting sits in the same session.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 1600 m time trial, then 2 x 400 m easy","block":"Conditioning","sets":"1","reps":"1600 m time trial, then 2 x 400 m easy","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Approach Jump to a target","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Three-step approach, jump to touch. Same target each week, raise it when it gets easy.","why":"The high jump event, and a short-contact task that feeds RSI.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Alternate Bound","block":"Plyo / Reactive","sets":"4","reps":"20 m","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Cover ground, not height, land under the hips.","why":"Elastic output on one leg at a time, the bridge between hops and sprinting.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"2","reps":"2","weight":"380 lb (88%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":7,"phase":"Expression","focus":"Contacts 60 · drop jump 18 in · sprint 40 yd · resisted free","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 60 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Drop Jump — box 18 in","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"fast","rpe":"","rest":"90s","cue":"Gate: last week's contacts settled inside 24 h and soreness stayed at or under 3/10 — if not, repeat last week instead. Step off, do not jump off. Land and leave the floor as fast as possible, under 0.25 s on the ground. Stop the set the moment ground time gets long.","why":"The exact quality the retest measures: RSI is jump height divided by ground time, and it was flat all of Block A.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"3","reps":"2","weight":"265 lb (62%)","tempo":"max intent up","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Every rep as fast as you can move it; stop the set when the bar slows.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"3","reps":"5","weight":"heavy","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"3","reps":"2","weight":"260 lb (88%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Free Sprint — 40 yd","block":"Speed / COD","sets":"4","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Full recovery between runs. Time them.","why":"The block cashes out here: everything loaded has to show up in a free run.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 3 x 600 m at goal-mile 400 pace, 3 min rest","block":"Conditioning","sets":"1","reps":"3 x 600 m at goal-mile 400 pace, 3 min rest","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Full arm swing, land and hold. Measure the best one.","why":"An APEX event, and the cleanest read on horizontal power week to week.","src":"coach"},{"name":"Approach Jump to a target","block":"Plyo / Reactive","sets":"4","reps":"3","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Three-step approach, jump to touch. Same target each week, raise it when it gets easy.","why":"The high jump event, and a short-contact task that feeds RSI.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Alternate Bound","block":"Plyo / Reactive","sets":"4","reps":"20 m","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Gate: knee settled inside 24 h from the last jump day. Cover ground, not height, land under the hips.","why":"Elastic output on one leg at a time, the bridge between hops and sprinting.","src":"coach","tendonWork":true,"gated":"knee"},{"name":"Trap Bar Deadlift — heavy","block":"Primary Strength","sets":"2","reps":"2","weight":"385 lb (90%)","tempo":"","rpe":"","rest":"3 min","cue":"Brace, neutral spine, one quality set at a time.","why":"The APEX trap bar event: heavy exposures kept through the block so the number holds.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"3","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"2 min","cue":"Soft knee, hips back, bar close.","why":"Hamstring length under load, the main protection for the sprint volume.","src":"coach"},{"name":"Nordic Hamstring Curl","block":"Accessory","sets":"3","reps":"5","weight":"BW","tempo":"5s eccentric","rpe":"","rest":"90s","cue":"Eccentric only, five seconds down, catch with the hands.","why":"Eccentric hamstring strength — the cheapest hamstring insurance at this sprint volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness feeds the drop jump directly.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]},{"week":8,"phase":"Deload / retest","focus":"Contacts 30 · sprint retest · resisted free","days":[{"day":"Mon","sessions":[{"type":"Elastic + Hinge","warmup":"General warm-up; ankle prep, pogo primer. Knee rule: soreness up to 3/10 during and straight after is fine; it has to be back to its normal baseline by the next morning. If it is not, drop to the previous week's contacts and hold there for a week.","exercises":[{"name":"Ankle Pogo — two feet","block":"Plyo / Reactive","sets":"3","reps":"10","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Stiff ankles, knees almost straight, minimum ground time. Count contacts: 30 across the whole session today.","why":"The cheapest stiffness work there is, and the entry point back to impact after a tendon block. Short contacts are what RSI measures.","src":"coach","tendonWork":true},{"name":"Hop and Stick — in place","block":"Plyo / Reactive","sets":"3","reps":"5 ea","weight":"BW","tempo":"fast","rpe":"","rest":"60s","cue":"Single leg, small height, land quiet and hold two seconds. Left leg first.","why":"Re-teaches landing before any real height is added, and keeps the left side leading.","src":"coach","tendonWork":true},{"name":"Retest — Drop Jump RSI, SL Jump, Hop Test","block":"Plyo / Reactive","sets":"2","reps":"1 ea","weight":"test","tempo":"","rpe":"","rest":"","cue":"Same warm-up and same plates as 29 Sep. Two efforts each, keep the best.","why":"Closes the block against the numbers it was built from.","src":"coach","vald":true},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"2","reps":"3","weight":"260 lb (60%)","tempo":"max intent up","rpe":"","rest":"2-3 min","cue":"Neutral spine, brace, drive the floor away. Every rep as fast as you can move it; stop the set when the bar slows.","why":"Force is at the 98th percentile — this keeps it there rather than chasing more, and the last two weeks turn it into speed.","src":"coach"},{"name":"Hip Thrust","block":"Primary Strength","sets":"2","reps":"8","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Ribs down, full hip extension, one-second squeeze at the top.","why":"Hip extension strength with no knee-flexion demand — it carries the trap bar and the 40.","src":"coach"},{"name":"Copenhagen Plank","block":"Accessory","sets":"3","reps":"20-30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"60s","cue":"Top leg on the bench, hips square, one line from shoulder to ankle.","why":"Adductor and groin resilience for the cutting tests.","src":"coach"}]}]},{"day":"Tue","sessions":[{"type":"Upper + Trunk","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Bench Press","block":"Primary Strength","sets":"2","reps":"3","weight":"205 lb (70%)","tempo":"","rpe":"","rest":"2-3 min","cue":"Feet planted, shoulder blades set, controlled touch, drive.","why":"An APEX event: build rep quality at event load through the block.","src":"coach"},{"name":"Chest-Supported Row","block":"Accessory","sets":"4","reps":"10","weight":"moderate","tempo":"","rpe":"","rest":"90s","cue":"Chest on the pad, pull the elbows to the hips.","why":"Upper-back balance for the press.","src":"coach"},{"name":"Half-Kneeling Press","block":"Accessory","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"60s","cue":"Glute of the down knee squeezed, ribs down, press straight up.","why":"Overhead strength with trunk control, no lumbar extension.","src":"coach"},{"name":"Suitcase Carry","block":"Accessory","sets":"4","reps":"30 m","weight":"heavy DB","tempo":"","rpe":"","rest":"60s","cue":"Stand tall, no side bend, slow steps.","why":"Anti-lateral flexion for the QL without loaded side bends.","src":"coach"}]}]},{"day":"Wed","sessions":[{"type":"Unilateral + Sprint","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Heavy Sled March","block":"Speed / COD","sets":"5","reps":"20 m","weight":"heavy","tempo":"","rpe":"","rest":"2 min","cue":"Low body angle, drive each step, no bouncing.","why":"Horizontal force with zero impact — it keeps the push quality while the plyo volume climbs.","src":"coach"},{"name":"Free Sprint — 40 yd","block":"Speed / COD","sets":"2","reps":"1","weight":"BW","tempo":"","rpe":"","rest":"3 min","cue":"Full recovery between runs. Time them.","why":"The block cashes out here: everything loaded has to show up in a free run.","src":"coach"},{"name":"Loaded Step-Up","block":"Primary Strength","sets":"3","reps":"6","weight":"DB","tempo":"2-0-1","rpe":"","rest":"2 min","cue":"Drive through the whole foot, left side first while the extra set is still on.","why":"Single-leg strength that carries the broad jump and the 40 start.","src":"coach"},{"name":"Single Leg RDL","block":"Primary Strength","sets":"3","reps":"8 ea","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Hips square, soft knee, reach long.","why":"Posterior chain on one leg — the hop asymmetry flipped to the left this test, so both sides get equal work now.","src":"coach"},{"name":"Tibialis Raise","block":"Accessory","sets":"3","reps":"20","weight":"BW","tempo":"","rpe":"","rest":"45s","cue":"Heels down, lift the toes high, slow lower.","why":"Shin capacity protects the knee as ground contacts rise.","src":"coach"}]}]},{"day":"Thu","sessions":[{"type":"Aerobic + Mile","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"QL Prep: 90/90 flow, dead bug, side plank","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"Slow, own each position, breathe.","why":"Low back prep before any running volume.","src":"coach"},{"name":"Mile Build — 1600 m time trial (APEX retest)","block":"Conditioning","sets":"1","reps":"1600 m time trial (APEX retest)","weight":"run","tempo":"","rpe":"","rest":"","cue":"Grass or track, not concrete. Stop the session if knee soreness goes past 3/10.","why":"The mile is the APEX event that needs actual running; at 246 lb the running itself is the tendon load, so it climbs slowly and is watched.","src":"coach","tendonWork":true},{"name":"Norwegian 4x4 (bike)","block":"Conditioning","sets":"4","reps":"4 min","weight":"90-95% HRmax","tempo":"","rpe":"","rest":"3 min easy","cue":"Hold 90-95% HRmax for the full four minutes.","why":"Aerobic power without adding impact on top of the run.","src":"coach"}]}]},{"day":"Fri","sessions":[{"type":"Jumps + Posterior","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Broad Jump","block":"Plyo / Reactive","sets":"2","reps":"2","weight":"BW","tempo":"","rpe":"","rest":"90s","cue":"Two quality efforts, measure the better one.","why":"The APEX retest number, taken fresh rather than at the end of a hard week.","src":"coach"},{"name":"Trap Bar Deadlift","block":"Primary Strength","sets":"2","reps":"3","weight":"260 lb (60%)","tempo":"","rpe":"","rest":"2 min","cue":"Easy speed, nothing grinding.","why":"Keeps the pattern without adding fatigue into the retest.","src":"coach"},{"name":"Barbell RDL","block":"Primary Strength","sets":"2","reps":"8","weight":"light","tempo":"","rpe":"","rest":"90s","cue":"Soft knee, hips back, bar close.","why":"Hamstring length, deload volume.","src":"coach"},{"name":"SL Calf Isometric","block":"Accessory","sets":"3","reps":"30s ea","weight":"BW","tempo":"iso","rpe":"","rest":"45s","cue":"Mid-range heel raise, hold.","why":"Ankle stiffness, no impact cost.","src":"coach","tendonWork":true}]}]},{"day":"Sat","sessions":[{"type":"Upper + Tissue","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Incline DB Press","block":"Accessory","sets":"4","reps":"8","weight":"DB","tempo":"","rpe":"","rest":"90s","cue":"Controlled down, press to lockout.","why":"Pressing volume without a second heavy bench day.","src":"coach"},{"name":"Pull-Up or Lat Pulldown","block":"Accessory","sets":"4","reps":"6-8","weight":"BW or load","tempo":"","rpe":"","rest":"90s","cue":"Full hang, chest to the bar.","why":"Upper-back mass and shoulder health.","src":"coach"},{"name":"Spanish Squat Isometric","block":"Accessory","sets":"3","reps":"30s","weight":"band","tempo":"iso","rpe":"","rest":"60s","cue":"Sit back to 60-90 degrees, shins vertical, hold.","why":"Kept as a primer now, not the main course — it settles the tendon on the day after jumps.","src":"coach","tendonWork":true},{"name":"Side Plank + Pallof","block":"Accessory","sets":"3","reps":"30s ea","weight":"band","tempo":"iso","rpe":"","rest":"45s","cue":"Stack the hips, press slow.","why":"Trunk work the QL tolerates.","src":"coach"}]}]},{"day":"Sun","sessions":[{"type":"Recovery","warmup":"General warm-up; ankle and hip prep.","exercises":[{"name":"Easy Bike or Walk","block":"Conditioning","sets":"1","reps":"20-30 min","weight":"easy","tempo":"","rpe":"","rest":"","cue":"Conversational. Nothing hard.","why":"Blood flow without load, and it keeps the weekly running total honest.","src":"coach"},{"name":"Hip and Ankle Mobility Flow","block":"Movement Prep","sets":"1","reps":"10 min","weight":"BW","tempo":"","rpe":"","rest":"","cue":"90/90, couch stretch, ankle rocks.","why":"Ranges that the sprint and jump volume quietly take away.","src":"coach"}]}]}]}]}
+};
+RX.AUSTIN_B_KEY='rx_seed_austin_blockB_v1';
+RX.seedAustinB=function(force){
+  let done=false;try{done=localStorage.getItem(RX.AUSTIN_B_KEY)==='1';}catch(e){}
+  if(done&&!force)return null;
+  const ath=S.athletes.find(a=>norm(a.first)==='austin'&&(/^c/i.test(a.last||'')||!a.last));
+  if(!ath)return null;                      // Block A seeds him; nothing to do yet
+  // the new numbers, merged so nothing already on file is lost
+  ath.vald=Object.assign({},ath.vald||{},RX.AUSTIN_B.vald);
+  const cur=S.programs[ath.id];
+  const onA=cur&&/austin-blockA/.test(cur.programVersion||'');
+  let loaded=false;
+  if(!cur||!(cur.weeks_data||[]).length||onA){
+    if(onA){
+      ath.blocks=(ath.blocks||[]).concat([{source:cur.source,version:cur.programVersion,ended:today(),weeks:cur.weeks}]);
+    }
+    RX.loadOne(ath,{program:RX.AUSTIN_B.program});   // loadHistory carries over
+    loaded=true;
+  }
+  if(loaded){
+    if(!S.sessions[ath.id])S.sessions[ath.id]=[];
+    S.sessions[ath.id].push({date:'2026-09-29',updates:{trap:undefined},
+      notes:'VALD retest: hop force 7013 N (98th pct, was 6282/91st), hop asym 12% left (was 19% right), '
+        +'SL jump asym 9.4% (was 20%), drop jump RSI 1.09 (45th, unchanged), CMJ power 55.8 W/kg (69th), '
+        +'10 yd 1.799 s, 40 yd 4.858 s, pro agility 4.915 s, L-drill 5.326 s. Block A closed; Block B loaded.'});
+  }
+  try{localStorage.setItem(RX.AUSTIN_B_KEY,'1');}catch(e){}
+  save();
+  if(loaded&&typeof toast==='function')toast('Block B loaded — Elastic Rebuild (8 weeks)');
+  return {athId:ath.id,loaded};
+};
+window.addEventListener('load',()=>setTimeout(()=>{try{RX.seedAustinB();}catch(e){console.warn('[RX] Block B seed',e);}},RX.SEED_DELAY+2500));
+})();
+/* ═══════════════ SECTION 31 — SPRINT BLOCK LOADED FOR THE GROUP ══════════
+   Maeve and Noelle get the resisted sprint block written straight into
+   their programs, so there is nothing to press before using it:
+
+   - Maeve  → velocity end. Her OHM curve has the steadiest heavy floor in
+              the group and scatters at the light end: force she cannot
+              express fast. Weeks run transition, transition, then four at
+              the velocity end.
+   - Noelle → transition, with the 4% drop-off rule. Her peaks are fine
+              (892 W); the floor is the limiter, so the standard is repeat
+              quality rather than load.
+
+   The old level-based runs ("OHM Run Heavy (Level 4)", "OHM Run Light
+   (Level 8)") come OUT of the weeks that have not been logged. That is the
+   point of the change: a level is a dial, and the same L4 can be peak power
+   for one athlete and the force end for another. They are replaced, not
+   stacked on top of.
+
+   Weeks with logged work are never touched, and anything the coach has
+   already edited in stays. Once a setting is timed in Lab → Sprint load,
+   the block rewrites itself so every week names the setting that measured
+   into that zone for her — no re-pressing anything. All of it rides the
+   normal merge, so a phone and an iPad end up with the same block. */
+(function(){
+const RS=RX.rsprint; if(!RS)return;
+
+/* an explicit bias set by the coach beats anything inferred from notes */
+const _bias=RS.bias;
+RS.bias=function(ath){
+  if(ath&&ath.sprintBias)return {id:ath.sprintBias,why:ath.sprintWhy||'Set for her by the coach.'};
+  return _bias.apply(this,arguments);
+};
+
+RS.SEED_KEY='rx_seed_sprint_group_v1';
+RS.SEED=[
+  {first:'Maeve',last:'Best',bw:141,bias:'vel',
+   why:'Force-rich, expression-poor: steadiest heavy floor in the group, scatter at the light end.'},
+  {first:'Noelle',last:'Tybur',bw:140,bias:'trans',
+   why:'Big peaks with an inconsistent floor — repeat quality is the limiter, not top end.'}
+];
+/* the old level-based runs this block replaces */
+RS.OLD=/^OHM Run (Heavy|Light)/i;
+RS.stripOld=function(athId){
+  const p=S.programs[athId]; if(!p)return 0;
+  let n=0;
+  (p.weeks_data||[]).forEach(w=>{
+    if(RX.assess.weekLogged(p,w.week))return;
+    (w.days||[]).forEach(d=>(d.sessions||[]).forEach(s=>{
+      const before=(s.exercises||[]).length;
+      s.exercises=(s.exercises||[]).filter(e=>!RS.OLD.test(e.name||''));
+      n+=before-s.exercises.length;
+    }));
+  });
+  return n;
+};
+RS.hasBlock=function(athId){
+  const p=S.programs[athId]; if(!p)return false;
+  return (p.weeks_data||[]).some(w=>(w.days||[]).some(d=>(d.sessions||[]).some(s=>(s.exercises||[]).some(e=>e.src==='rsprint'))));
+};
+RS.seedGroup=function(force){
+  let done=false;try{done=localStorage.getItem(RS.SEED_KEY)==='1';}catch(e){}
+  if(done&&!force)return null;
+  const out=[];
+  RS.SEED.forEach(spec=>{
+    const ath=S.athletes.find(a=>norm(a.first)===norm(spec.first)&&(!a.last||norm(a.last).indexOf(norm(spec.last))===0||norm(spec.last).indexOf(norm(a.last))===0));
+    if(!ath)return;
+    if(!ath.vald)ath.vald={};
+    if(!ath.vald.bw)ath.vald.bw=spec.bw;        // never overwrite a weighed number
+    if(!ath.last)ath.last=spec.last;
+    if(!ath.sprintBias){ath.sprintBias=spec.bias;ath.sprintWhy=spec.why;}
+    if(!ath.sprintMethod)ath.sprintMethod='direct';      // the OHM pulls; it is not a dragged sled
+    const p=S.programs[ath.id];
+    if(!p||!(p.weeks_data||[]).length)return;
+    if(RS.hasBlock(ath.id)){out.push({name:an(ath),skipped:'already has the block'});return;}
+    const removed=RS.stripOld(ath.id);
+    const plan=RS.plan({bias:ath.sprintBias,bw:ath.vald.bw,method:'direct',athId:ath.id});
+    const r=RS.apply(ath.id,plan,{});
+    if(!r.added){out.push({name:an(ath),skipped:'no speed day in the open weeks'});return;}
+    if(!S.sessions[ath.id])S.sessions[ath.id]=[];
+    S.sessions[ath.id].push({date:today(),updates:{},
+      notes:'Resisted sprint block loaded: '+RS.zone(ath.sprintBias).label+' bias across weeks '+r.weeks.join(', ')
+        +(removed?'. Replaced '+removed+' level-based OHM runs':'')
+        +'. Loads are predicted from body weight until each setting is timed in the Lab.'});
+    out.push({name:an(ath),added:r.added,weeks:r.weeks,removed,bias:ath.sprintBias});
+  });
+  try{localStorage.setItem(RS.SEED_KEY,'1');}catch(e){}
+  save();
+  if(out.some(o=>o.added)&&typeof toast==='function')toast('Sprint block loaded for '+out.filter(o=>o.added).map(o=>o.name.split(' ')[0]).join(' and '));
+  return out;
+};
+
+/* ---- it keeps itself current ----
+   Timing a setting changes which one each week should use, so the block is
+   rewritten for that athlete the moment a test is saved. Logged weeks are
+   left alone by RS.apply, so this can never rewrite work already done. */
+const _record=RS.record;
+RS.record=function(athId,settingId,freeT,resT,dist){
+  const e=_record.apply(this,arguments);
+  if(!e)return e;
+  try{
+    if(RS.hasBlock(athId)){
+      const ath=S.athletes.find(a=>a.id===athId);
+      const bw=(ath.vald&&ath.vald.bw)||parseFloat(RS.st.bw)||0;
+      const bias=ath.sprintBias||RS.bias(ath).id;
+      const plan=RS.plan({bias,bw,method:ath.sprintMethod||'direct',athId});
+      const r=RS.apply(athId,plan,{});
+      if(r.added&&typeof toast==='function')toast('Sprint block updated with the measured setting');
+    }
+  }catch(err){console.warn('[RX] sprint refresh',err);}
+  return e;
+};
+
+/* rebuild every athlete's block from whatever measurements now exist. Called
+   after a merge, so a timing taken on one device shows up as the right
+   setting on the other without anyone pressing a thing. */
+RS.refreshAll=function(){
+  let n=0;
+  (S.athletes||[]).forEach(ath=>{
+    try{
+      if(!RS.hasBlock(ath.id))return;
+      const bw=(ath.vald&&ath.vald.bw)||0; if(!bw)return;
+      const bias=ath.sprintBias||RS.bias(ath).id;
+      const plan=RS.plan({bias,bw,method:ath.sprintMethod||'direct',athId:ath.id});
+      if(RS.apply(ath.id,plan,{}).added)n++;
+    }catch(e){}
+  });
+  return n;
+};
+
+/* the roster page gets a one-line read of where each athlete's block sits */
+RS.status=function(ath){
+  if(!ath||!RS.hasBlock(ath.id))return null;
+  const bias=ath.sprintBias||RS.bias(ath).id;
+  const p=RS.pick(ath.id,bias);
+  return {zone:RS.zone(bias).label,
+    setting:p?p.setting.device+' '+p.setting.label:null,
+    measured:p&&p.source==='measured'?p.entry.vdec:null};
+};
+
+window.addEventListener('load',()=>setTimeout(()=>{
+  try{RS.seedGroup();}catch(e){console.warn('[RX] sprint seed',e);}
+},(RX.SEED_DELAY||1500)+3000));
+})();
+
+console.log('%c[RX] Evidence layer v'+RX.ver+' — dosing, audit, roster, capture, groups, coach blocks, game adjust, bridge, load zones, program builder style, group workspace, off-season adjust, per-athlete readiness, squat + sprint assessment, the Lab, move exercises, camera velocity, device merge, sprint load, Block B, group sprint block','color:#7aa2c4');
 })();
 </script>
 
