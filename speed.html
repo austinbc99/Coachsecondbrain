@@ -371,39 +371,63 @@ function beep(freq=880, ms=120){
 function setPill(kind, text){ const p = $('pill'); p.className = 'pill ' + kind; $('pillText').textContent = text; }
 function showErr(msg){ const e = $('errBox'); e.textContent = msg; e.hidden = !msg; }
 
+const UUID_FTMS = '00001826-0000-1000-8000-00805f9b34fb', UUID_TD = '00002acd-0000-1000-8000-00805f9b34fb', UUID_BATT = '0000180f-0000-1000-8000-00805f9b34fb';
+function errText(e){ if (!e) return 'no details'; const n = e.name || '', m = e.message || ''; return (n || m) ? (n + (m ? ': ' + m : '')) : (String(e) || 'no details'); }
+function withTimeout(p, ms, what){ return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(what + ' timed out after ' + (ms/1000) + ' s')), ms))]); }
 async function connect(){
   showErr('');
   if (!navigator.bluetooth){ $('noBt').hidden = false; return; }
   stopSim();
+  let step = 'picker';
   try {
     setPill('busy', 'Pick the runner…');
     if (!app.device){
+      // Full 128-bit IDs: some iOS Bluetooth browsers reject the short numeric form.
       app.device = await navigator.bluetooth.requestDevice({
-        filters:[{services:[FTMS_SERVICE]}, {namePrefix:'Assault'}],
-        optionalServices:[FTMS_SERVICE, 0x180f]
+        filters:[{services:[UUID_FTMS]}, {namePrefix:'Assault'}],
+        optionalServices:[UUID_FTMS, UUID_BATT]
       });
-      app.device.addEventListener('gattserverdisconnected', onDisconnect);
+      try { app.device.addEventListener('gattserverdisconnected', onDisconnect); } catch(_){ app.device.ongattserverdisconnected = onDisconnect; }
     }
-    setPill('busy', 'Connecting…');
-    const server = await app.device.gatt.connect();
+    step = 'connect';
+    setPill('busy', 'Press the console Bluetooth button');
+    let server = null, lastErr = null;
+    for (let i = 0; i < 3 && !server; i++){   // iPhones often fail the first attempt
+      try { server = await withTimeout(app.device.gatt.connect(), 12000, 'Connecting'); }
+      catch(e){ lastErr = e; await new Promise(r => setTimeout(r, 1200)); }
+    }
+    if (!server) throw lastErr || new Error('the runner did not answer');
+    step = 'service';
     let svc;
-    try { svc = await server.getPrimaryService(FTMS_SERVICE); }
+    try { svc = await server.getPrimaryService(UUID_FTMS); }
     catch(e){
       let list = '';
       try { list = (await server.getPrimaryServices()).map(s => s.uuid).join('\n'); } catch(_){}
-      $('raw').textContent = 'Fitness Machine service not found. Services on device:\n' + (list || '(none readable)');
+      $('raw').textContent = 'Fitness Machine service not found. Services on device:\n' + (list || '(none readable)') + '\nError: ' + errText(e);
       $('rawDetails').open = true;
-      throw new Error('Connected, but the runner did not expose the Fitness Machine service. The raw panel lists what it did expose. Send a screenshot of it.');
+      throw e;
     }
-    app.char = await svc.getCharacteristic(TREADMILL_DATA);
-    app.char.addEventListener('characteristicvaluechanged', ev => onPacket(ev.target.value, performance.now()));
+    step = 'characteristic';
+    app.char = await svc.getCharacteristic(UUID_TD);
+    step = 'notify';
+    const onVal = ev => onPacket(ev.target.value, performance.now());
+    try { app.char.addEventListener('characteristicvaluechanged', onVal); } catch(_){ app.char.oncharacteristicvaluechanged = onVal; }
     await app.char.startNotifications();
     app.mode = 'ble'; setPill('live', app.device.name || 'Runner');
     $('btnConnect').textContent = 'Disconnect';
   } catch(e){
     setPill('', 'Not connected');
-    if (e && e.name === 'NotFoundError') return; // user closed the picker
-    showErr((e && e.message) || 'Could not connect. Close any other app connected to the runner (Assault, Zwift, Wahoo, nRF Connect), wake the console, and try again.');
+    // forget the device so the next tap shows the picker again instead of retrying a stale one
+    try { if (app.device && app.device.gatt && app.device.gatt.connected) app.device.gatt.disconnect(); } catch(_){}
+    app.device = null; app.char = null;
+    const tips = {
+      picker: 'No runner was picked. If AssaultRunner wasn\'t in the list: close nRF Connect and the Assault/Wahoo/Zwift apps, step on the belt to wake the console, check iPhone Settings → Bluefy → Bluetooth is on, then tap Connect again.',
+      connect: 'Picked the runner but it would not connect. Tap Connect, pick AssaultRunner, then press the Bluetooth button on the console right away. Make sure nRF Connect is fully closed.',
+      service: 'Connected, but the speed service was not found. Open Raw Bluetooth packets below and send a screenshot.',
+      characteristic: 'Connected, but the treadmill data channel was not found.',
+      notify: 'Connected, but the runner would not start sending speed. Tap Connect again.'
+    };
+    showErr(tips[step] + '  [' + step + ' · ' + errText(e) + ']');
   }
 }
 function disconnect(){ if (app.device && app.device.gatt.connected) app.device.gatt.disconnect(); }
