@@ -13288,7 +13288,7 @@ function mount(){
   }
   if (!document.getElementById('pg-runner')){
     const pg = document.createElement('div'); pg.className = 'page'; pg.id = 'pg-runner';
-    pg.innerHTML = '<div class="ph"><div><div class="ph-title">RUNNER</div><div class="ph-sub">AssaultRunner live speed &middot; interval tests</div></div></div><div id="rsl-host"></div>';
+    pg.innerHTML = '<div class="ph"><div><div class="ph-title">TOP SPEED</div><div class="ph-sub">AssaultRunner live speed &middot; interval tests</div></div></div><div id="rsl-host"></div>';
     pages.appendChild(pg);
     ROOT = pg.querySelector('#rsl-host').attachShadow({mode:'open'});
     ROOT.innerHTML = '<style>' + CSS + '</style><div class="rsl-root">' + HTML + '</div>';
@@ -13301,9 +13301,8 @@ function addTab(nav){
   if (!nav || nav.querySelector('.tab[data-page="runner"]')) return;
   {
     const t = document.createElement('div'); t.className = 'tab'; t.dataset.page = 'runner'; t.setAttribute('onclick', "go('runner')");
-    t.innerHTML = '<span class="ti">\u23F1\uFE0F</span>Runner';
-    const after = nav.querySelector('.tab[data-page="lab"]') || nav.querySelector('.tab[data-page="athletes"]');
-    if (after && after.nextSibling) nav.insertBefore(t, after.nextSibling); else nav.appendChild(t);
+    t.innerHTML = '<span class="ti">\u23F1\uFE0F</span>Top Speed';
+    nav.appendChild(t); // last tab, after Studio
     if (typeof S === 'object' && S.page === 'runner') t.classList.add('active');
   }
 }
