@@ -4,7 +4,7 @@
    iPads end up running last month's logic at the rack. Network-first means
    devices always get the newest commit when online, and the gym's dead-
    corner wifi still gets the last good copy offline. */
-const CACHE='coachos-v1';
+const CACHE='coachos-v1'; // sw rev 2: no-cache revalidation
 self.addEventListener('install',e=>{self.skipWaiting();});
 self.addEventListener('activate',e=>{
   e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
@@ -14,7 +14,8 @@ self.addEventListener('fetch',e=>{
   const u=new URL(e.request.url);
   if(u.origin!==location.origin)return;   // never intercept sync/API traffic
   e.respondWith(
-    fetch(e.request).then(r=>{
+    // cache:'no-cache' revalidates with GitHub so its 10-minute browser cache can't serve an old index.html
+    fetch(e.request,{cache:'no-cache'}).then(r=>{
       const cp=r.clone();
       caches.open(CACHE).then(c=>c.put(e.request,cp));
       return r;
